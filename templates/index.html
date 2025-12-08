@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>My AI Assistant</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="app">
+    <section class="card">
+      <header>
+        <h1>My AI Assistant</h1>
+        <p>Backed by Gemini + Python 3.13. Ask anything related to research, code, or explanations.</p>
+      </header>
+
+      <section id="chat" class="chat">
+        <div class="msg-row assistant">
+          <div class="bubble">
+            <div class="role-label">Assistant</div>
+            Hello! I'm here and ready to help.  
+            How can I assist you today?
+          </div>
+        </div>
+      </section>
+
+      <form id="prompt-form" class="input-area">
+        <textarea
+          id="prompt"
+          placeholder="Ask me anything… (Shift+Enter for newline)"
+        ></textarea>
+        <button type="submit" id="send-btn">Send</button>
+      </form>
+
+      <div class="status" id="status">
+        Debug: logging enabled. Check terminal for backend errors.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById('prompt-form');
+    const promptInput = document.getElementById('prompt');
+    const chat = document.getElementById('chat');
+    const statusEl = document.getElementById('status');
+    const sendBtn = document.getElementById('send-btn');
+
+    function appendMessage(role, content, isTyping = false) {
+      const row = document.createElement('div');
+      row.className = `msg-row ${role}`;
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+
+      const label = document.createElement('div');
+      label.className = 'role-label';
+      label.textContent = role === 'user' ? 'You' : 'Assistant';
+
+      bubble.appendChild(label);
+
+      if (isTyping) {
+        const dots = document.createElement('div');
+        dots.style.display = 'flex';
+        dots.style.gap = '4px';
+        ['dot1', 'dot2', 'dot3'].forEach(() => {
+          const d = document.createElement('div');
+          d.className = 'typing-dot';
+          dots.appendChild(d);
+        });
+        bubble.appendChild(dots);
+      } else {
+        bubble.appendChild(document.createTextNode(content));
+      }
+
+      row.appendChild(bubble);
+      chat.appendChild(row);
+      chat.scrollTop = chat.scrollHeight;
+      return row;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const prompt = promptInput.value.trim();
+      if (!prompt) return;
+
+      appendMessage('user', prompt);
+      promptInput.value = '';
+      sendBtn.disabled = true;
+      statusEl.textContent = 'Thinking…';
+
+      const typingRow = appendMessage('assistant', '', true);
+
+      try {
+        const resp = await fetch('/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt })
+        });
+
+        if (!resp.ok) {
+          const errText = await resp.text();
+          throw new Error(`HTTP ${resp.status}: ${errText}`);
+        }
+
+        const data = await resp.json();
+        const answer = data.response || '[No response returned]';
+
+        typingRow.remove();
+        appendMessage('assistant', answer);
+        statusEl.textContent = 'Ready.';
+      } catch (err) {
+        console.error(err);
+        typingRow.remove();
+        appendMessage('assistant',
+          'Sorry, something went wrong while contacting the backend. ' +
+          'Check the server logs for details.'
+        );
+        statusEl.textContent = `Error: ${err.message}`;
+      } finally {
+        sendBtn.disabled = false;
+        chat.scrollTop = chat.scrollHeight;
+      }
+    });
+
+    promptInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        form.dispatchEvent(new Event('submit'));
+      }
+    });
+  </script>
+</body>
+</html>
