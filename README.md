@@ -5,6 +5,15 @@ personal research/chat assistant. The backend wraps the official `google-genai`
 SDK, adds simple logging/error handling, and exposes a `/ask` endpoint consumed
 by the single-page interface in `templates/index.html`.
 
+## Features
+- Context-aware prompt augmentation that marks political/current-event queries as
+  research-focused when applicable to reduce unnecessary refusals.
+- Built-in instruction to treat every response as if it were generated at
+  `[Today's Date] [Current Time]`, keeping answers consistent for time-sensitive
+  questions.
+- Simple Flask API (`/ask`) with streaming-like UI states and logging.
+- CLI helper (`assistant.py`) for quick connectivity tests.
+
 ## Prerequisites
 - Python 3.11+ (the UI copy references 3.13, but any modern 3.11+ build works)
 - A Google Gemini API key

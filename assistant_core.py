@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Tuple
 
 from dotenv import load_dotenv
 from google import genai
@@ -29,6 +30,51 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 # Choose a default model – adjust if you want Pro instead of Flash.
 DEFAULT_MODEL = "gemini-2.5-flash"
 
+BASE_SYSTEM_PROMPT = (
+    "You are My AI Assistant, a neutral research aide. "
+    "Offer balanced, factual summaries, cite reputable public sources when "
+    "possible, and clearly label speculation. Decline policy-violating requests "
+    "with a courteous explanation. Always assume the current date is [Today's Date] "
+    "and the current time is [Current Time] when answering time-sensitive questions."
+)
+
+RESEARCH_KEYWORDS = {
+    "research",
+    "study",
+    "analyze",
+    "analysis",
+    "report",
+    "paper",
+    "whitepaper",
+    "thesis",
+    "investigate",
+    "explain",
+    "context",
+    "academic",
+}
+
+SENSITIVE_KEYWORDS = {
+    "election",
+    "policy",
+    "politic",
+    "government",
+    "law",
+    "current event",
+    "geopolit",
+    "conflict",
+    "war",
+    "protest",
+    "legislation",
+    "campaign",
+}
+
+RELAXED_SAFETY_SETTINGS = [
+    genai_types.SafetySetting(
+        category=genai_types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+        threshold=genai_types.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    ),
+]
+
 
 class AssistantError(Exception):
     """Custom exception for assistant-related errors."""
@@ -46,13 +92,21 @@ def ask_gemini(prompt: str, *, model: str = DEFAULT_MODEL) -> str:
     if not prompt.strip():
         raise AssistantError("Prompt is empty. Please enter a question or request.")
 
+    contextual_prompt, context_meta = _build_contextual_prompt(prompt)
+    logger.info(
+        "Prompt context: sensitive=%s research=%s",
+        context_meta["is_sensitive"],
+        context_meta["is_research"],
+    )
+
     try:
         response = client.models.generate_content(
             model=model,
-            contents=prompt,
+            contents=contextual_prompt,
             config=genai_types.GenerateContentConfig(
                 temperature=0.5,
                 max_output_tokens=1024,
+                safety_settings=RELAXED_SAFETY_SETTINGS,
             ),
         )
 
@@ -88,3 +142,49 @@ def ask_gemini(prompt: str, *, model: str = DEFAULT_MODEL) -> str:
             "Something went wrong talking to the AI backend. "
             "Check logs for details and try again."
         ) from e
+
+
+def _analyze_prompt(prompt: str) -> Tuple[bool, bool]:
+    """
+    Returns a (is_sensitive, is_research) tuple for quick heuristics.
+    """
+    lowered = prompt.lower()
+    is_sensitive = any(token in lowered for token in SENSITIVE_KEYWORDS)
+    is_research = any(token in lowered for token in RESEARCH_KEYWORDS)
+    return is_sensitive, is_research
+
+
+def _build_contextual_prompt(prompt: str):
+    """
+    Prepend lightweight context so the model understands user intent.
+    Returns the augmented prompt along with metadata for logging.
+    """
+    is_sensitive, is_research = _analyze_prompt(prompt)
+    context_lines = [BASE_SYSTEM_PROMPT]
+
+    if is_sensitive and is_research:
+        context_lines.append(
+            "Context: The user is examining a sensitive or political subject "
+            "purely for neutral/academic research."
+        )
+    elif is_sensitive:
+        context_lines.append(
+            "Context: This touches on sensitive civic topics. Provide factual, "
+            "balanced analysis and avoid persuasion."
+        )
+    elif is_research:
+        context_lines.append(
+            "Context: Treat the request as a scholarly or technical research task."
+        )
+
+    context_lines.append("User prompt:")
+    context_lines.append(prompt.strip())
+    context_lines.append("")
+    context_lines.append("Assistant response:")
+
+    contextual_prompt = "\n".join(context_lines)
+
+    return contextual_prompt, {
+        "is_sensitive": is_sensitive,
+        "is_research": is_research,
+    }
