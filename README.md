@@ -8,9 +8,8 @@ by the single-page interface in `templates/index.html`.
 ## Features
 - Context-aware prompt augmentation that marks political/current-event queries as
   research-focused when applicable to reduce unnecessary refusals.
-- Built-in instruction to treat every response as if it were generated at
-  `[Today's Date] [Current Time]`, keeping answers consistent for time-sensitive
-  questions.
+- Built-in instruction injects the actual current date/time (and emphasizes it on
+  time-sensitive prompts) so answers reference real-world context.
 - Simple Flask API (`/ask`) with streaming-like UI states and logging.
 - CLI helper (`assistant.py`) for quick connectivity tests.
 
@@ -30,9 +29,10 @@ by the single-page interface in `templates/index.html`.
    pip install -r requirements.txt
    ```
 4. Provide your API credentials by creating a `.env` file in the project root:
-   ```
+   ```env
    GEMINI_API_KEY=your-key-here
    # Optional: FLASK_DEBUG=true
+   # Optional: ASSISTANT_EXTRA_CONTEXT="Any additional standing instructions you want prepended"
    ```
 
 ## Running the web UI
@@ -49,3 +49,10 @@ If you only want to test connectivity to Gemini, run:
 python assistant.py
 ```
 It sends a sample query and prints the raw response.
+
+## Testing
+Run the automated tests with:
+```bash
+pytest
+```
+Tests are written to avoid real Gemini calls, so they can run offline.

@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 from typing import Tuple
 
 from dotenv import load_dotenv
@@ -19,6 +20,7 @@ _console.setFormatter(logging.Formatter(
 logger.addHandler(_console)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+EXTRA_ASSISTANT_CONTEXT = (os.getenv("ASSISTANT_EXTRA_CONTEXT") or "").strip()
 
 if not GEMINI_API_KEY:
     logger.error("GEMINI_API_KEY is not set. Check your .env file.")
@@ -30,12 +32,12 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 # Choose a default model – adjust if you want Pro instead of Flash.
 DEFAULT_MODEL = "gemini-2.5-flash"
 
-BASE_SYSTEM_PROMPT = (
+BASE_SYSTEM_PROMPT_TEMPLATE = (
     "You are My AI Assistant, a neutral research aide. "
     "Offer balanced, factual summaries, cite reputable public sources when "
     "possible, and clearly label speculation. Decline policy-violating requests "
-    "with a courteous explanation. Always assume the current date is [Today's Date] "
-    "and the current time is [Current Time] when answering time-sensitive questions."
+    "with a courteous explanation. Always assume the current date is {current_date} "
+    "and the current time is {current_time} when answering time-sensitive questions."
 )
 
 RESEARCH_KEYWORDS = {
@@ -68,6 +70,22 @@ SENSITIVE_KEYWORDS = {
     "campaign",
 }
 
+TIME_SENSITIVE_KEYWORDS = {
+    "today",
+    "tonight",
+    "current",
+    "latest",
+    "recent",
+    "now",
+    "deadline",
+    "forecast",
+    "schedule",
+    "timeline",
+    "this week",
+    "this month",
+    "breaking",
+}
+
 RELAXED_SAFETY_SETTINGS = [
     genai_types.SafetySetting(
         category=genai_types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
@@ -94,9 +112,10 @@ def ask_gemini(prompt: str, *, model: str = DEFAULT_MODEL) -> str:
 
     contextual_prompt, context_meta = _build_contextual_prompt(prompt)
     logger.info(
-        "Prompt context: sensitive=%s research=%s",
+        "Prompt context: sensitive=%s research=%s time_sensitive=%s",
         context_meta["is_sensitive"],
         context_meta["is_research"],
+        context_meta["is_time_sensitive"],
     )
 
     try:
@@ -144,14 +163,15 @@ def ask_gemini(prompt: str, *, model: str = DEFAULT_MODEL) -> str:
         ) from e
 
 
-def _analyze_prompt(prompt: str) -> Tuple[bool, bool]:
+def _analyze_prompt(prompt: str) -> Tuple[bool, bool, bool]:
     """
-    Returns a (is_sensitive, is_research) tuple for quick heuristics.
+    Returns a (is_sensitive, is_research, is_time_sensitive) tuple for heuristics.
     """
     lowered = prompt.lower()
     is_sensitive = any(token in lowered for token in SENSITIVE_KEYWORDS)
     is_research = any(token in lowered for token in RESEARCH_KEYWORDS)
-    return is_sensitive, is_research
+    is_time_sensitive = any(token in lowered for token in TIME_SENSITIVE_KEYWORDS)
+    return is_sensitive, is_research, is_time_sensitive
 
 
 def _build_contextual_prompt(prompt: str):
@@ -159,8 +179,14 @@ def _build_contextual_prompt(prompt: str):
     Prepend lightweight context so the model understands user intent.
     Returns the augmented prompt along with metadata for logging.
     """
-    is_sensitive, is_research = _analyze_prompt(prompt)
-    context_lines = [BASE_SYSTEM_PROMPT]
+    is_sensitive, is_research, is_time_sensitive = _analyze_prompt(prompt)
+    current_date, current_time = _current_datetime_strings()
+    context_lines = [
+        BASE_SYSTEM_PROMPT_TEMPLATE.format(
+            current_date=current_date,
+            current_time=current_time,
+        )
+    ]
 
     if is_sensitive and is_research:
         context_lines.append(
@@ -176,6 +202,13 @@ def _build_contextual_prompt(prompt: str):
         context_lines.append(
             "Context: Treat the request as a scholarly or technical research task."
         )
+    if is_time_sensitive:
+        context_lines.append(
+            "Context: The user stressed timeliness. Use the stated current date "
+            f"{current_date} and time {current_time} when framing your answer."
+        )
+    if EXTRA_ASSISTANT_CONTEXT:
+        context_lines.append(EXTRA_ASSISTANT_CONTEXT)
 
     context_lines.append("User prompt:")
     context_lines.append(prompt.strip())
@@ -187,4 +220,16 @@ def _build_contextual_prompt(prompt: str):
     return contextual_prompt, {
         "is_sensitive": is_sensitive,
         "is_research": is_research,
+        "is_time_sensitive": is_time_sensitive,
     }
+
+
+def _current_datetime_strings() -> Tuple[str, str]:
+    """
+    Returns formatted (date, time) strings using the local timezone to provide
+    Gemini with concrete temporal context every call.
+    """
+    now = datetime.now().astimezone()
+    date_str = now.strftime("%B %d, %Y")
+    time_str = now.strftime("%H:%M %Z")
+    return date_str, time_str
