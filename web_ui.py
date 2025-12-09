@@ -14,11 +14,23 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-key-change-in-product
 
 logger = logging.getLogger("web_ui")
 logger.setLevel(logging.INFO)
-_console = logging.StreamHandler()
-_console.setFormatter(logging.Formatter(
-    "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s"
-))
-logger.addHandler(_console)
+# Disable propagation to prevent duplicate logs from root logger
+logger.propagate = False
+
+# Use a process-level flag to ensure logging is only configured once per process
+# This prevents duplicate handlers when Flask's reloader re-imports modules
+if not hasattr(logging, '_web_ui_configured'):
+    # Remove any existing StreamHandler instances to prevent duplicates
+    for handler in list(logger.handlers):
+        if isinstance(handler, logging.StreamHandler):
+            logger.removeHandler(handler)
+    
+    _console = logging.StreamHandler()
+    _console.setFormatter(logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s"
+    ))
+    logger.addHandler(_console)
+    logging._web_ui_configured = True
 
 
 @app.route("/", methods=["GET"])

@@ -12,12 +12,23 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+# Disable propagation to prevent duplicate logs from root logger
+logger.propagate = False
 
-_console = logging.StreamHandler()
-_console.setFormatter(logging.Formatter(
-    "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s"
-))
-logger.addHandler(_console)
+# Use a process-level flag to ensure logging is only configured once per process
+# This prevents duplicate handlers when Flask's reloader re-imports modules
+if not hasattr(logging, '_assistant_core_configured'):
+    # Remove any existing StreamHandler instances to prevent duplicates
+    for handler in list(logger.handlers):
+        if isinstance(handler, logging.StreamHandler):
+            logger.removeHandler(handler)
+    
+    _console = logging.StreamHandler()
+    _console.setFormatter(logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s"
+    ))
+    logger.addHandler(_console)
+    logging._assistant_core_configured = True
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 EXTRA_ASSISTANT_CONTEXT = (os.getenv("ASSISTANT_EXTRA_CONTEXT") or "").strip()
