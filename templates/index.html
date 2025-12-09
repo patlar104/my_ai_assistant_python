@@ -281,8 +281,18 @@
         });
 
         if (!resp.ok) {
-          const errData = await resp.json().catch(() => ({ error: await resp.text() }));
-          throw new Error(errData.error || `HTTP ${resp.status}`);
+          // Read response body as text first (can only be read once)
+          const responseText = await resp.text();
+          let errorMessage = `HTTP ${resp.status}`;
+          try {
+            // Try to parse as JSON
+            const errData = JSON.parse(responseText);
+            errorMessage = errData.error || errorMessage;
+          } catch {
+            // If JSON parsing fails, use the text directly
+            errorMessage = responseText || resp.statusText || errorMessage;
+          }
+          throw new Error(errorMessage);
         }
 
         const data = await resp.json();

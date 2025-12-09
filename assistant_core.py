@@ -178,9 +178,15 @@ def ask_gemini(prompt: str, conversation_history: Optional[List[Dict]] = None, *
             for msg in conversation_history:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
-                if role in ("user", "model") and content:
+                if content:  # Only check for content, accept any valid role
                     # Map "assistant" to "model" for Gemini API
-                    api_role = "model" if role == "assistant" else role
+                    if role == "assistant":
+                        api_role = "model"
+                    elif role in ("user", "model"):
+                        api_role = role
+                    else:
+                        # Skip invalid roles
+                        continue
                     contents.append(genai_types.Content(
                         role=api_role,
                         parts=[genai_types.Part(text=content)]
