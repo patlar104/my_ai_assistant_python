@@ -31,8 +31,40 @@
       </div>
     </aside>
 
+    <!-- Settings Panel -->
+    <aside id="settings-panel" class="settings-panel">
+      <div class="settings-header">
+        <h2>Settings</h2>
+        <button id="settings-close-btn" class="settings-close-btn" aria-label="Close settings">×</button>
+      </div>
+      <div class="settings-content">
+        <div class="settings-section">
+          <h3>Model</h3>
+          <p class="settings-description">Current model: Gemini 2.5 Flash</p>
+          <p class="settings-note">Model selection coming soon</p>
+        </div>
+        <div class="settings-section">
+          <h3>Conversations</h3>
+          <p class="settings-description">Manage your conversation history</p>
+          <button id="clear-all-conversations-btn" class="settings-action-btn">Clear All Conversations</button>
+        </div>
+        <div class="settings-section">
+          <h3>About</h3>
+          <p class="settings-description">My AI Assistant v1.0</p>
+          <p class="settings-note">Powered by Gemini 2.5 Flash</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Settings Overlay -->
+    <div id="settings-overlay" class="settings-overlay"></div>
+
     <!-- Main Content -->
     <main class="app">
+      <!-- Floating toggle button (visible when sidebar is collapsed) -->
+      <button id="sidebar-toggle-floating" class="sidebar-toggle-floating" aria-label="Toggle sidebar" style="display: none;">
+        <span class="toggle-icon">☰</span>
+      </button>
       <section class="card">
         <header>
           <h1>My AI Assistant</h1>
@@ -79,9 +111,73 @@
     const newConversationBtn = document.getElementById('new-conversation-btn');
     const conversationsList = document.getElementById('conversations-list');
 
-    // Sidebar toggle
-    sidebarToggle.addEventListener('click', () => {
+    const sidebarToggleFloating = document.getElementById('sidebar-toggle-floating');
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsPanel = document.getElementById('settings-panel');
+    const settingsOverlay = document.getElementById('settings-overlay');
+    const settingsCloseBtn = document.getElementById('settings-close-btn');
+    const clearAllConversationsBtn = document.getElementById('clear-all-conversations-btn');
+    
+    // Function to toggle sidebar
+    function toggleSidebar() {
       sidebar.classList.toggle('collapsed');
+      // Show/hide floating toggle button
+      if (sidebar.classList.contains('collapsed')) {
+        sidebarToggleFloating.style.display = 'flex';
+      } else {
+        sidebarToggleFloating.style.display = 'none';
+      }
+    }
+    
+    // Function to open settings
+    function openSettings() {
+      settingsPanel.classList.add('active');
+      settingsOverlay.classList.add('active');
+      document.body.style.overflow = 'hidden'; // Prevent background scrolling
+    }
+    
+    // Function to close settings
+    function closeSettings() {
+      settingsPanel.classList.remove('active');
+      settingsOverlay.classList.remove('active');
+      document.body.style.overflow = ''; // Restore scrolling
+    }
+    
+    // Sidebar toggle (both buttons)
+    sidebarToggle.addEventListener('click', toggleSidebar);
+    sidebarToggleFloating.addEventListener('click', toggleSidebar);
+    
+    // Settings panel controls
+    settingsBtn.addEventListener('click', openSettings);
+    settingsCloseBtn.addEventListener('click', closeSettings);
+    settingsOverlay.addEventListener('click', closeSettings);
+    
+    // Clear all conversations
+    clearAllConversationsBtn.addEventListener('click', async () => {
+      if (confirm('Are you sure you want to delete ALL conversations? This cannot be undone.')) {
+        try {
+          const resp = await fetch('/conversations');
+          if (!resp.ok) throw new Error('Failed to load conversations');
+          const data = await resp.json();
+          const conversations = data.conversations || [];
+          
+          // Delete each conversation
+          for (const conv of conversations) {
+            await fetch(`/conversations/${conv.id}`, { method: 'DELETE' });
+          }
+          
+          // Clear current conversation
+          currentConversationId = null;
+          sessionStorage.removeItem('conversation_id');
+          clearChat();
+          await loadConversations();
+          closeSettings();
+          statusEl.textContent = 'All conversations deleted.';
+        } catch (err) {
+          console.error('Error clearing conversations:', err);
+          statusEl.textContent = 'Error clearing conversations.';
+        }
+      }
     });
 
     // Format date for display
