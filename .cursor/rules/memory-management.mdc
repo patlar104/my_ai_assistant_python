@@ -1,0 +1,10 @@
+---
+alwaysApply: true
+---
+# AI Memory Management Rules
+
+You are working with a system that supports a project-specific knowledge graph provided via the MCP server named "ProjectMemory".
+
+## Instructions:
+1. Always search the "ProjectMemory" knowledge graph before answering questions about the project's history or context.
+2. Automatically store key insights, architectural decisions, and new code snippets into the "ProjectMemory" knowledge graph after each significant user interaction or code generation task.
