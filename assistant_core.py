@@ -99,7 +99,14 @@ class AssistantError(Exception):
     pass
 
 
-def ask_gemini(prompt: str, conversation_history: Optional[List[Dict]] = None, *, model: str = DEFAULT_MODEL) -> str:
+def ask_gemini(
+    prompt: str, 
+    conversation_history: Optional[List[Dict]] = None, 
+    *, 
+    model: str = DEFAULT_MODEL,
+    temperature: float = 0.7,
+    max_output_tokens: int = 2048
+) -> str:
     """
     Send a prompt to Gemini with optional conversation history and return the response text.
 
@@ -107,6 +114,8 @@ def ask_gemini(prompt: str, conversation_history: Optional[List[Dict]] = None, *
         prompt: The user's prompt/question
         conversation_history: List of previous messages in format [{"role": "user|assistant", "content": "..."}]
         model: The Gemini model to use
+        temperature: Controls randomness (0.0-2.0). Lower = more focused, Higher = more creative. Default: 0.7
+        max_output_tokens: Maximum tokens in response (256-8192). Default: 2048
 
     Raises AssistantError on failure.
     """
@@ -198,12 +207,16 @@ def ask_gemini(prompt: str, conversation_history: Optional[List[Dict]] = None, *
             parts=[genai_types.Part(text=prompt.strip())]
         ))
         
+        # Validate and clamp parameters
+        temperature = max(0.0, min(2.0, float(temperature)))
+        max_output_tokens = max(256, min(8192, int(max_output_tokens)))
+        
         response = client.models.generate_content(
             model=model,
             contents=contents,
             config=genai_types.GenerateContentConfig(
-                temperature=0.5,
-                max_output_tokens=1024,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
                 safety_settings=RELAXED_SAFETY_SETTINGS,
             ),
         )

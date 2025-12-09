@@ -5,6 +5,11 @@
   <title>My AI Assistant</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <!-- Markdown rendering and syntax highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/DOMPurify/3.0.6/purify.min.js"></script>
 </head>
 <body>
   <div class="app-container">
@@ -42,6 +47,24 @@
           <h3>Model</h3>
           <p class="settings-description">Current model: Gemini 2.5 Flash</p>
           <p class="settings-note">Model selection coming soon</p>
+        </div>
+        <div class="settings-section">
+          <h3>Response Settings</h3>
+          <div class="settings-control-group">
+            <label for="temperature-slider" class="settings-label">
+              Temperature: <span id="temperature-value">0.7</span>
+              <span class="settings-hint">Controls creativity (0.0 = focused, 2.0 = creative)</span>
+            </label>
+            <input type="range" id="temperature-slider" class="settings-slider" min="0" max="2" step="0.1" value="0.7">
+          </div>
+          <div class="settings-control-group">
+            <label for="max-tokens-input" class="settings-label">
+              Max Tokens: <span id="max-tokens-value">2048</span>
+              <span class="settings-hint">Maximum response length (256-8192)</span>
+            </label>
+            <input type="range" id="max-tokens-slider" class="settings-slider" min="256" max="8192" step="256" value="2048">
+            <input type="number" id="max-tokens-input" class="settings-number-input" min="256" max="8192" step="256" value="2048">
+          </div>
         </div>
         <div class="settings-section">
           <h3>Conversations</h3>
@@ -319,19 +342,89 @@
       `;
     }
 
+    // Configure marked for markdown rendering
+    if (typeof marked !== 'undefined') {
+      marked.setOptions({
+        breaks: true,
+        gfm: true,
+        highlight: function(code, lang) {
+          if (typeof hljs !== 'undefined') {
+            if (lang && hljs.getLanguage(lang)) {
+              try {
+                return hljs.highlight(code, { language: lang }).value;
+              } catch (err) {
+                // Fall through to auto-detect
+              }
+            }
+            try {
+              return hljs.highlightAuto(code).value;
+            } catch (err) {
+              return code;
+            }
+          }
+          return code;
+        }
+      });
+    }
+
     // Append message to chat
-    function appendMessage(role, content, isTyping = false) {
+    function appendMessage(role, content, isTyping = false, messageId = null) {
       const row = document.createElement('div');
       row.className = `msg-row ${role}`;
+      if (messageId) {
+        row.setAttribute('data-message-id', messageId);
+      }
 
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
+
+      const labelRow = document.createElement('div');
+      labelRow.style.display = 'flex';
+      labelRow.style.justifyContent = 'space-between';
+      labelRow.style.alignItems = 'center';
+      labelRow.style.marginBottom = '0.5rem';
 
       const label = document.createElement('div');
       label.className = 'role-label';
       label.textContent = role === 'user' ? 'You' : 'Assistant';
 
-      bubble.appendChild(label);
+      labelRow.appendChild(label);
+
+      // Add response controls for assistant messages
+      if (role === 'assistant' && !isTyping) {
+        const controls = document.createElement('div');
+        controls.className = 'message-controls';
+        
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'message-control-btn';
+        copyBtn.setAttribute('aria-label', 'Copy response');
+        copyBtn.title = 'Copy';
+        copyBtn.innerHTML = '📋';
+        copyBtn.onclick = (e) => {
+          e.stopPropagation();
+          copyToClipboard(content);
+          copyBtn.innerHTML = '✓';
+          setTimeout(() => {
+            copyBtn.innerHTML = '📋';
+          }, 2000);
+        };
+        
+        const regenerateBtn = document.createElement('button');
+        regenerateBtn.className = 'message-control-btn';
+        regenerateBtn.setAttribute('aria-label', 'Regenerate response');
+        regenerateBtn.title = 'Regenerate';
+        regenerateBtn.innerHTML = '🔄';
+        regenerateBtn.onclick = (e) => {
+          e.stopPropagation();
+          regenerateLastResponse();
+        };
+        
+        controls.appendChild(copyBtn);
+        controls.appendChild(regenerateBtn);
+        labelRow.appendChild(controls);
+      }
+
+      bubble.appendChild(labelRow);
 
       if (isTyping) {
         const dots = document.createElement('div');
@@ -344,7 +437,29 @@
         });
         bubble.appendChild(dots);
       } else {
-        bubble.appendChild(document.createTextNode(content));
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        
+        if (role === 'assistant' && typeof marked !== 'undefined') {
+          // Render markdown for assistant responses
+          const rawHtml = marked.parse(content);
+          const sanitized = typeof DOMPurify !== 'undefined' 
+            ? DOMPurify.sanitize(rawHtml)
+            : rawHtml;
+          contentDiv.innerHTML = sanitized;
+          
+          // Highlight code blocks
+          if (typeof hljs !== 'undefined') {
+            contentDiv.querySelectorAll('pre code').forEach((block) => {
+              hljs.highlightElement(block);
+            });
+          }
+        } else {
+          // Plain text for user messages
+          contentDiv.textContent = content;
+        }
+        
+        bubble.appendChild(contentDiv);
       }
 
       row.appendChild(bubble);
@@ -353,12 +468,183 @@
       return row;
     }
 
+    // Copy to clipboard helper
+    function copyToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          statusEl.textContent = 'Copied to clipboard!';
+          setTimeout(() => {
+            statusEl.textContent = 'Ready.';
+          }, 2000);
+        });
+      } else {
+        // Fallback for older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        statusEl.textContent = 'Copied to clipboard!';
+        setTimeout(() => {
+          statusEl.textContent = 'Ready.';
+        }, 2000);
+      }
+    }
+
+    // Regenerate last response
+    let lastPrompt = null;
+    async function regenerateLastResponse() {
+      if (!lastPrompt) {
+        statusEl.textContent = 'No previous prompt to regenerate.';
+        return;
+      }
+      
+      sendBtn.disabled = true;
+      statusEl.textContent = 'Regenerating…';
+      
+      // Remove last assistant message
+      const lastAssistantMsg = Array.from(chat.querySelectorAll('.msg-row.assistant')).slice(-1)[0];
+      if (lastAssistantMsg) {
+        lastAssistantMsg.remove();
+      }
+      
+      const typingRow = appendMessage('assistant', '', true);
+      
+      try {
+        const resp = await fetch('/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            prompt: lastPrompt,
+            conversation_id: currentConversationId,
+            temperature: getTemperature(),
+            max_tokens: getMaxTokens()
+          })
+        });
+
+        if (!resp.ok) {
+          const responseText = await resp.text();
+          let errorMessage = `HTTP ${resp.status}`;
+          try {
+            const errData = JSON.parse(responseText);
+            errorMessage = errData.error || errorMessage;
+          } catch {
+            errorMessage = responseText || resp.statusText || errorMessage;
+          }
+          throw new Error(errorMessage);
+        }
+
+        const data = await resp.json();
+        const answer = data.response || '[No response returned]';
+        
+        if (data.conversation_id) {
+          currentConversationId = data.conversation_id;
+          sessionStorage.setItem('conversation_id', currentConversationId);
+          await loadConversations();
+        }
+
+        typingRow.remove();
+        appendMessage('assistant', answer);
+        statusEl.textContent = 'Ready.';
+      } catch (err) {
+        console.error(err);
+        typingRow.remove();
+        appendMessage('assistant',
+          'Sorry, something went wrong while contacting the backend. ' +
+          'Check the server logs for details.'
+        );
+        statusEl.textContent = `Error: ${err.message}`;
+      } finally {
+        sendBtn.disabled = false;
+        chat.scrollTop = chat.scrollHeight;
+      }
+    }
+
+    // Get response settings
+    function getTemperature() {
+      const value = parseFloat(document.getElementById('temperature-slider').value);
+      return isNaN(value) ? 0.7 : value;
+    }
+
+    function getMaxTokens() {
+      const value = parseInt(document.getElementById('max-tokens-input').value);
+      return isNaN(value) ? 2048 : value;
+    }
+
+    // Load settings from localStorage
+    function loadSettings() {
+      const savedTemp = localStorage.getItem('temperature');
+      const savedMaxTokens = localStorage.getItem('max_tokens');
+      
+      if (savedTemp) {
+        document.getElementById('temperature-slider').value = savedTemp;
+        document.getElementById('temperature-value').textContent = savedTemp;
+      }
+      
+      if (savedMaxTokens) {
+        document.getElementById('max-tokens-slider').value = savedMaxTokens;
+        document.getElementById('max-tokens-input').value = savedMaxTokens;
+        document.getElementById('max-tokens-value').textContent = savedMaxTokens;
+      }
+    }
+
+    // Save settings to localStorage
+    function saveSettings() {
+      localStorage.setItem('temperature', getTemperature());
+      localStorage.setItem('max_tokens', getMaxTokens());
+    }
+
+    // Settings panel controls
+    const temperatureSlider = document.getElementById('temperature-slider');
+    const temperatureValue = document.getElementById('temperature-value');
+    const maxTokensSlider = document.getElementById('max-tokens-slider');
+    const maxTokensInput = document.getElementById('max-tokens-input');
+    const maxTokensValue = document.getElementById('max-tokens-value');
+
+    if (temperatureSlider) {
+      temperatureSlider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        temperatureValue.textContent = value.toFixed(1);
+        saveSettings();
+      });
+    }
+
+    if (maxTokensSlider) {
+      maxTokensSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+        maxTokensInput.value = value;
+        maxTokensValue.textContent = value;
+        saveSettings();
+      });
+    }
+
+    if (maxTokensInput) {
+      maxTokensInput.addEventListener('input', (e) => {
+        let value = parseInt(e.target.value);
+        // Validate that parsing succeeded (not NaN)
+        if (isNaN(value)) {
+          // If invalid, restore to current slider value
+          value = parseInt(maxTokensSlider.value) || 2048;
+          e.target.value = value;
+        }
+        if (value < 256) value = 256;
+        if (value > 8192) value = 8192;
+        maxTokensSlider.value = value;
+        maxTokensValue.textContent = value;
+        saveSettings();
+      });
+    }
+
     // Handle form submission
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const prompt = promptInput.value.trim();
       if (!prompt) return;
 
+      lastPrompt = prompt; // Store for regeneration
       appendMessage('user', prompt);
       promptInput.value = '';
       sendBtn.disabled = true;
@@ -372,7 +658,9 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             prompt,
-            conversation_id: currentConversationId
+            conversation_id: currentConversationId,
+            temperature: getTemperature(),
+            max_tokens: getMaxTokens()
           })
         });
 
@@ -428,7 +716,8 @@
     // Initialize
     newConversationBtn.addEventListener('click', createNewConversation);
     
-    // Load conversations and current conversation on page load
+    // Load settings and conversations on page load
+    loadSettings();
     (async () => {
       await loadConversations();
       if (currentConversationId) {

@@ -31,9 +31,11 @@ def ask():
     data = request.get_json(silent=True) or {}
     prompt = data.get("prompt", "")
     conversation_id = data.get("conversation_id") or session.get("conversation_id")
+    temperature = data.get("temperature", 0.7)
+    max_tokens = data.get("max_tokens", 2048)
     
-    logger.info("/ask received prompt length=%d, conversation_id=%s", 
-                len(prompt), conversation_id)
+    logger.info("/ask received prompt length=%d, conversation_id=%s, temperature=%.2f, max_tokens=%d", 
+                len(prompt), conversation_id, temperature, max_tokens)
 
     # Create new conversation if none exists
     if not conversation_id:
@@ -57,8 +59,13 @@ def ask():
         conversation_history = [{"role": msg["role"], "content": msg["content"]} 
                                for msg in history]
         
-        # Get response from Gemini
-        answer = ask_gemini(prompt, conversation_history=conversation_history)
+        # Get response from Gemini with configurable settings
+        answer = ask_gemini(
+            prompt, 
+            conversation_history=conversation_history,
+            temperature=temperature,
+            max_output_tokens=max_tokens
+        )
         
         # Save user message and assistant response
         ConversationManager.add_message(conversation_id, "user", prompt)
