@@ -32,6 +32,19 @@ def test_ask_gemini_returns_response_text(monkeypatch):
     assert result == "Hello world"
 
 
+def test_ask_gemini_with_conversation_history(monkeypatch):
+    response = SimpleNamespace(text="Hello again")
+    _set_fake_client(monkeypatch, response)
+
+    history = [
+        {"role": "user", "content": "Hello"},
+        {"role": "assistant", "content": "Hi there!"}
+    ]
+    result = assistant_core.ask_gemini("How are you?", conversation_history=history)
+
+    assert result == "Hello again"
+
+
 def test_ask_gemini_falls_back_to_candidate_parts(monkeypatch):
     part = SimpleNamespace(text="Fallback text")
     content = SimpleNamespace(parts=[part])

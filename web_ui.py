@@ -1,14 +1,16 @@
 import logging
 import os
 
-from flask import Flask, render_template, request
+from flask import Flask, jsonify, render_template, request, session
 from dotenv import load_dotenv
 
 from assistant_core import ask_gemini, AssistantError
+from conversation_manager import ConversationManager
 
 load_dotenv()
 
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-key-change-in-production")
 
 logger = logging.getLogger("web_ui")
 logger.setLevel(logging.INFO)
@@ -28,11 +30,41 @@ def index():
 def ask():
     data = request.get_json(silent=True) or {}
     prompt = data.get("prompt", "")
-    logger.info("/ask received prompt length=%d", len(prompt))
+    conversation_id = data.get("conversation_id") or session.get("conversation_id")
+    
+    logger.info("/ask received prompt length=%d, conversation_id=%s", 
+                len(prompt), conversation_id)
+
+    # Create new conversation if none exists
+    if not conversation_id:
+        conversation_id = ConversationManager.create_conversation()
+        session["conversation_id"] = conversation_id
 
     try:
-        answer = ask_gemini(prompt)
-        return {"response": answer}
+        # Load conversation history
+        conversation = ConversationManager.load_conversation(conversation_id)
+        if not conversation:
+            # Conversation was deleted, create a new one
+            conversation_id = ConversationManager.create_conversation()
+            session["conversation_id"] = conversation_id
+            conversation = ConversationManager.load_conversation(conversation_id)
+        
+        # Get conversation history (last 20 messages to avoid token limits)
+        history = conversation.get("messages", [])[-20:]
+        conversation_history = [{"role": msg["role"], "content": msg["content"]} 
+                               for msg in history]
+        
+        # Get response from Gemini
+        answer = ask_gemini(prompt, conversation_history=conversation_history)
+        
+        # Save user message and assistant response
+        ConversationManager.add_message(conversation_id, "user", prompt)
+        ConversationManager.add_message(conversation_id, "assistant", answer)
+        
+        return {
+            "response": answer,
+            "conversation_id": conversation_id
+        }
     except AssistantError as e:
         logger.warning("AssistantError: %s", e)
         return {"error": str(e)}, 400
@@ -41,6 +73,63 @@ def ask():
         return {
             "error": "An unexpected error occurred while processing your request."
         }, 500
+
+
+@app.route("/conversations", methods=["GET"])
+def list_conversations():
+    """List all conversations."""
+    try:
+        conversations = ConversationManager.list_conversations()
+        return jsonify({"conversations": conversations})
+    except Exception as e:
+        logger.exception("Error listing conversations: %s", e)
+        return {"error": "Failed to list conversations"}, 500
+
+
+@app.route("/conversations/new", methods=["POST"])
+def new_conversation():
+    """Create a new conversation."""
+    try:
+        conversation_id = ConversationManager.create_conversation()
+        session["conversation_id"] = conversation_id
+        return jsonify({
+            "conversation_id": conversation_id,
+            "message": "New conversation created"
+        })
+    except Exception as e:
+        logger.exception("Error creating conversation: %s", e)
+        return {"error": "Failed to create conversation"}, 500
+
+
+@app.route("/conversations/<conversation_id>", methods=["GET"])
+def get_conversation(conversation_id):
+    """Get a specific conversation."""
+    try:
+        conversation = ConversationManager.load_conversation(conversation_id)
+        if not conversation:
+            return {"error": "Conversation not found"}, 404
+        return jsonify(conversation)
+    except Exception as e:
+        logger.exception("Error getting conversation: %s", e)
+        return {"error": "Failed to get conversation"}, 500
+
+
+@app.route("/conversations/<conversation_id>", methods=["DELETE"])
+def delete_conversation(conversation_id):
+    """Delete a conversation."""
+    try:
+        success = ConversationManager.delete_conversation(conversation_id)
+        if not success:
+            return {"error": "Conversation not found"}, 404
+        
+        # Clear session if deleting current conversation
+        if session.get("conversation_id") == conversation_id:
+            session.pop("conversation_id", None)
+        
+        return jsonify({"message": "Conversation deleted"})
+    except Exception as e:
+        logger.exception("Error deleting conversation: %s", e)
+        return {"error": "Failed to delete conversation"}, 500
 
 
 if __name__ == "__main__":

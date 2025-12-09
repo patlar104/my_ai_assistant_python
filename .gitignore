@@ -51,3 +51,6 @@ instance/
 
 # Logs
 *.log
+
+# Conversations
+conversations/

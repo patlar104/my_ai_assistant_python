@@ -7,14 +7,212 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <main class="app">
-    <section class="card">
-      <header>
-        <h1>My AI Assistant</h1>
-        <p>Backed by Gemini + Python 3.13. Ask anything related to research, code, or explanations.</p>
-      </header>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle sidebar">
+          <span class="toggle-icon">☰</span>
+        </button>
+        <h2 class="sidebar-title">Conversations</h2>
+      </div>
+      <div class="sidebar-content">
+        <button id="new-conversation-btn" class="new-conversation-btn">
+          <span>+</span> New Conversation
+        </button>
+        <div id="conversations-list" class="conversations-list">
+          <!-- Conversations will be loaded here -->
+        </div>
+      </div>
+      <div class="sidebar-footer">
+        <button id="settings-btn" class="settings-btn" aria-label="Settings" title="Settings (Coming Soon)">
+          ⚙️
+        </button>
+      </div>
+    </aside>
 
-      <section id="chat" class="chat">
+    <!-- Main Content -->
+    <main class="app">
+      <section class="card">
+        <header>
+          <h1>My AI Assistant</h1>
+          <p>Backed by Gemini 2.5 Flash. Ask anything related to research, code, or explanations.</p>
+        </header>
+
+        <section id="chat" class="chat">
+          <div class="msg-row assistant">
+            <div class="bubble">
+              <div class="role-label">Assistant</div>
+              Hello! I'm here and ready to help.  
+              How can I assist you today?
+            </div>
+          </div>
+        </section>
+
+        <form id="prompt-form" class="input-area">
+          <textarea
+            id="prompt"
+            placeholder="Ask me anything… (Shift+Enter for newline)"
+          ></textarea>
+          <button type="submit" id="send-btn">Send</button>
+        </form>
+
+        <div class="status" id="status">
+          Ready.
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // State management
+    let currentConversationId = sessionStorage.getItem('conversation_id') || null;
+
+    // DOM elements
+    const form = document.getElementById('prompt-form');
+    const promptInput = document.getElementById('prompt');
+    const chat = document.getElementById('chat');
+    const statusEl = document.getElementById('status');
+    const sendBtn = document.getElementById('send-btn');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    const newConversationBtn = document.getElementById('new-conversation-btn');
+    const conversationsList = document.getElementById('conversations-list');
+
+    // Sidebar toggle
+    sidebarToggle.addEventListener('click', () => {
+      sidebar.classList.toggle('collapsed');
+    });
+
+    // Format date for display
+    function formatDate(dateString) {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return date.toLocaleDateString();
+    }
+
+    // Load conversations list
+    async function loadConversations() {
+      try {
+        const resp = await fetch('/conversations');
+        if (!resp.ok) throw new Error('Failed to load conversations');
+        const data = await resp.json();
+        renderConversationsList(data.conversations || []);
+      } catch (err) {
+        console.error('Error loading conversations:', err);
+      }
+    }
+
+    // Render conversations list
+    function renderConversationsList(conversations) {
+      conversationsList.innerHTML = '';
+      
+      if (conversations.length === 0) {
+        conversationsList.innerHTML = '<div class="empty-state">No conversations yet</div>';
+        return;
+      }
+
+      conversations.forEach(conv => {
+        const item = document.createElement('div');
+        item.className = `conversation-item ${conv.id === currentConversationId ? 'active' : ''}`;
+        item.innerHTML = `
+          <div class="conversation-info" data-id="${conv.id}">
+            <div class="conversation-title">${conv.message_count > 0 ? `Conversation (${conv.message_count} messages)` : 'New Conversation'}</div>
+            <div class="conversation-date">${formatDate(conv.updated_at || conv.created_at)}</div>
+          </div>
+          <button class="delete-conversation-btn" data-id="${conv.id}" aria-label="Delete conversation">×</button>
+        `;
+        
+        // Click to load conversation
+        item.querySelector('.conversation-info').addEventListener('click', () => {
+          loadConversation(conv.id);
+        });
+        
+        // Delete conversation
+        item.querySelector('.delete-conversation-btn').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (confirm('Delete this conversation?')) {
+            await deleteConversation(conv.id);
+          }
+        });
+        
+        conversationsList.appendChild(item);
+      });
+    }
+
+    // Create new conversation
+    async function createNewConversation() {
+      try {
+        const resp = await fetch('/conversations/new', { method: 'POST' });
+        if (!resp.ok) throw new Error('Failed to create conversation');
+        const data = await resp.json();
+        currentConversationId = data.conversation_id;
+        sessionStorage.setItem('conversation_id', currentConversationId);
+        clearChat();
+        await loadConversations();
+        statusEl.textContent = 'New conversation started.';
+      } catch (err) {
+        console.error('Error creating conversation:', err);
+        statusEl.textContent = 'Error creating conversation.';
+      }
+    }
+
+    // Load a conversation
+    async function loadConversation(conversationId) {
+      try {
+        const resp = await fetch(`/conversations/${conversationId}`);
+        if (!resp.ok) throw new Error('Failed to load conversation');
+        const data = await resp.json();
+        
+        currentConversationId = conversationId;
+        sessionStorage.setItem('conversation_id', conversationId);
+        
+        // Clear and reload chat
+        clearChat();
+        data.messages.forEach(msg => {
+          appendMessage(msg.role, msg.content);
+        });
+        
+        await loadConversations();
+        statusEl.textContent = 'Conversation loaded.';
+      } catch (err) {
+        console.error('Error loading conversation:', err);
+        statusEl.textContent = 'Error loading conversation.';
+      }
+    }
+
+    // Delete a conversation
+    async function deleteConversation(conversationId) {
+      try {
+        const resp = await fetch(`/conversations/${conversationId}`, { method: 'DELETE' });
+        if (!resp.ok) throw new Error('Failed to delete conversation');
+        
+        if (conversationId === currentConversationId) {
+          currentConversationId = null;
+          sessionStorage.removeItem('conversation_id');
+          clearChat();
+        }
+        
+        await loadConversations();
+        statusEl.textContent = 'Conversation deleted.';
+      } catch (err) {
+        console.error('Error deleting conversation:', err);
+        statusEl.textContent = 'Error deleting conversation.';
+      }
+    }
+
+    // Clear chat display
+    function clearChat() {
+      chat.innerHTML = `
         <div class="msg-row assistant">
           <div class="bubble">
             <div class="role-label">Assistant</div>
@@ -22,29 +220,10 @@
             How can I assist you today?
           </div>
         </div>
-      </section>
+      `;
+    }
 
-      <form id="prompt-form" class="input-area">
-        <textarea
-          id="prompt"
-          placeholder="Ask me anything… (Shift+Enter for newline)"
-        ></textarea>
-        <button type="submit" id="send-btn">Send</button>
-      </form>
-
-      <div class="status" id="status">
-        Debug: logging enabled. Check terminal for backend errors.
-      </div>
-    </section>
-  </main>
-
-  <script>
-    const form = document.getElementById('prompt-form');
-    const promptInput = document.getElementById('prompt');
-    const chat = document.getElementById('chat');
-    const statusEl = document.getElementById('status');
-    const sendBtn = document.getElementById('send-btn');
-
+    // Append message to chat
     function appendMessage(role, content, isTyping = false) {
       const row = document.createElement('div');
       row.className = `msg-row ${role}`;
@@ -78,6 +257,7 @@
       return row;
     }
 
+    // Handle form submission
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const prompt = promptInput.value.trim();
@@ -94,16 +274,26 @@
         const resp = await fetch('/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt })
+          body: JSON.stringify({ 
+            prompt,
+            conversation_id: currentConversationId
+          })
         });
 
         if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(`HTTP ${resp.status}: ${errText}`);
+          const errData = await resp.json().catch(() => ({ error: await resp.text() }));
+          throw new Error(errData.error || `HTTP ${resp.status}`);
         }
 
         const data = await resp.json();
         const answer = data.response || '[No response returned]';
+        
+        // Update conversation ID if returned
+        if (data.conversation_id) {
+          currentConversationId = data.conversation_id;
+          sessionStorage.setItem('conversation_id', currentConversationId);
+          await loadConversations();
+        }
 
         typingRow.remove();
         appendMessage('assistant', answer);
@@ -128,6 +318,17 @@
         form.dispatchEvent(new Event('submit'));
       }
     });
+
+    // Initialize
+    newConversationBtn.addEventListener('click', createNewConversation);
+    
+    // Load conversations and current conversation on page load
+    (async () => {
+      await loadConversations();
+      if (currentConversationId) {
+        await loadConversation(currentConversationId);
+      }
+    })();
   </script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 import logging
 import os
 from datetime import datetime
-from typing import Tuple
+from typing import Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 from google import genai
@@ -99,29 +99,102 @@ class AssistantError(Exception):
     pass
 
 
-def ask_gemini(prompt: str, *, model: str = DEFAULT_MODEL) -> str:
+def ask_gemini(prompt: str, conversation_history: Optional[List[Dict]] = None, *, model: str = DEFAULT_MODEL) -> str:
     """
-    Send a prompt to Gemini and return the response text.
+    Send a prompt to Gemini with optional conversation history and return the response text.
+
+    Args:
+        prompt: The user's prompt/question
+        conversation_history: List of previous messages in format [{"role": "user|assistant", "content": "..."}]
+        model: The Gemini model to use
 
     Raises AssistantError on failure.
     """
-    logger.info("ask_gemini called with prompt length=%d", len(prompt))
+    logger.info("ask_gemini called with prompt length=%d, history length=%d", 
+                len(prompt), len(conversation_history) if conversation_history else 0)
 
     if not prompt.strip():
         raise AssistantError("Prompt is empty. Please enter a question or request.")
 
-    contextual_prompt, context_meta = _build_contextual_prompt(prompt)
+    # Build system context
+    is_sensitive, is_research, is_time_sensitive = _analyze_prompt(prompt)
+    current_date, current_time = _current_datetime_strings()
+    
+    system_instruction = BASE_SYSTEM_PROMPT_TEMPLATE.format(
+        current_date=current_date,
+        current_time=current_time,
+    )
+    
+    # Add contextual instructions
+    context_instructions = []
+    if is_sensitive and is_research:
+        context_instructions.append(
+            "Context: The user is examining a sensitive or political subject "
+            "purely for neutral/academic research."
+        )
+    elif is_sensitive:
+        context_instructions.append(
+            "Context: This touches on sensitive civic topics. Provide factual, "
+            "balanced analysis and avoid persuasion."
+        )
+    elif is_research:
+        context_instructions.append(
+            "Context: Treat the request as a scholarly or technical research task."
+        )
+    if is_time_sensitive:
+        context_instructions.append(
+            f"Context: The user stressed timeliness. Use the stated current date "
+            f"{current_date} and time {current_time} when framing your answer."
+        )
+    if EXTRA_ASSISTANT_CONTEXT:
+        context_instructions.append(EXTRA_ASSISTANT_CONTEXT)
+    
     logger.info(
         "Prompt context: sensitive=%s research=%s time_sensitive=%s",
-        context_meta["is_sensitive"],
-        context_meta["is_research"],
-        context_meta["is_time_sensitive"],
+        is_sensitive,
+        is_research,
+        is_time_sensitive,
     )
 
     try:
+        # Build contents array for Gemini API
+        contents = []
+        
+        # Add system instruction as first message
+        system_message = system_instruction
+        if context_instructions:
+            system_message += "\n\n" + "\n".join(context_instructions)
+        contents.append(genai_types.Content(
+            role="user",
+            parts=[genai_types.Part(text=system_message)]
+        ))
+        contents.append(genai_types.Content(
+            role="model",
+            parts=[genai_types.Part(text="Understood. I'll follow these guidelines.")]
+        ))
+        
+        # Add conversation history if provided
+        if conversation_history:
+            for msg in conversation_history:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role in ("user", "model") and content:
+                    # Map "assistant" to "model" for Gemini API
+                    api_role = "model" if role == "assistant" else role
+                    contents.append(genai_types.Content(
+                        role=api_role,
+                        parts=[genai_types.Part(text=content)]
+                    ))
+        
+        # Add current user prompt
+        contents.append(genai_types.Content(
+            role="user",
+            parts=[genai_types.Part(text=prompt.strip())]
+        ))
+        
         response = client.models.generate_content(
             model=model,
-            contents=contextual_prompt,
+            contents=contents,
             config=genai_types.GenerateContentConfig(
                 temperature=0.5,
                 max_output_tokens=1024,
