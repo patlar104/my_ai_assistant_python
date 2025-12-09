@@ -48,6 +48,9 @@ def ask():
             conversation_id = ConversationManager.create_conversation()
             session["conversation_id"] = conversation_id
             conversation = ConversationManager.load_conversation(conversation_id)
+            # Verify the second load succeeded
+            if not conversation:
+                raise AssistantError("Failed to create or load conversation. Please try again.")
         
         # Get conversation history (last 20 messages to avoid token limits)
         history = conversation.get("messages", [])[-20:]
