@@ -1,5 +1,6 @@
 import logging
 import os
+import json
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -9,6 +10,23 @@ from google.genai import types as genai_types
 
 # Load environment variables from .env
 load_dotenv()
+
+# #region agent log
+DEBUG_LOG_PATH = r"c:\Users\patri\OneDrive\Documents\GitHub\my_ai_assistant_python\.cursor\debug.log"
+def _debug_log(session_id, run_id, hypothesis_id, location, message, data):
+    try:
+        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "sessionId": session_id,
+                "runId": run_id,
+                "hypothesisId": hypothesis_id,
+                "location": location,
+                "message": message,
+                "data": data,
+                "timestamp": int(datetime.now().timestamp() * 1000)
+            }) + "\n")
+    except: pass
+# #endregion
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -33,11 +51,18 @@ if not hasattr(logging, '_assistant_core_configured'):
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 EXTRA_ASSISTANT_CONTEXT = (os.getenv("ASSISTANT_EXTRA_CONTEXT") or "").strip()
 
+# #region agent log
+_debug_log("debug-session", "run1", "E", "assistant_core.py:36", "Checking GEMINI_API_KEY", {"has_key": bool(GEMINI_API_KEY), "key_length": len(GEMINI_API_KEY) if GEMINI_API_KEY else 0})
+# #endregion
+
 if not GEMINI_API_KEY:
     logger.error("GEMINI_API_KEY is not set. Check your .env file.")
     raise RuntimeError("GEMINI_API_KEY environment variable is required.")
 
 # Create a single shared client.
+# #region agent log
+_debug_log("debug-session", "run1", "E", "assistant_core.py:44", "Creating Gemini client", {})
+# #endregion
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Choose a default model – adjust if you want Pro instead of Flash.
@@ -222,6 +247,9 @@ def ask_gemini(
         temperature = max(0.0, min(2.0, float(temperature)))
         max_output_tokens = max(256, min(8192, int(max_output_tokens)))
         
+        # #region agent log
+        _debug_log("debug-session", "run1", "B", "assistant_core.py:225", "Calling Gemini API", {"model": model, "contents_count": len(contents), "temperature": temperature, "max_tokens": max_output_tokens})
+        # #endregion
         response = client.models.generate_content(
             model=model,
             contents=contents,
@@ -231,6 +259,9 @@ def ask_gemini(
                 safety_settings=RELAXED_SAFETY_SETTINGS,
             ),
         )
+        # #region agent log
+        _debug_log("debug-session", "run1", "B", "assistant_core.py:234", "Gemini API returned", {"has_response": bool(response), "has_text": bool(getattr(response, "text", None))})
+        # #endregion
 
         # Robustly extract text: prefer response.text, otherwise fall back to
         # joining candidate parts (covers some safety-blocked or streaming cases).
@@ -259,6 +290,9 @@ def ask_gemini(
         raise
 
     except Exception as e:
+        # #region agent log
+        _debug_log("debug-session", "run1", "F", "assistant_core.py:292", "Gemini API exception", {"error": str(e), "type": type(e).__name__})
+        # #endregion
         logger.exception("Unexpected error calling Gemini API: %s", e)
         raise AssistantError(
             "Something went wrong talking to the AI backend. "

@@ -33,7 +33,7 @@ class SettingsPanel extends StatelessWidget {
       children: [
         // Overlay
         GestureDetector(
-          onTap: widget.onClose,
+          onTap: onClose,
           child: Container(
             color: Colors.black54,
           ),
@@ -68,7 +68,7 @@ class SettingsPanel extends StatelessWidget {
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       IconButton(
-                        onPressed: widget.onClose,
+                        onPressed: onClose,
                         icon: const Icon(Icons.close),
                         tooltip: 'Close',
                       ),

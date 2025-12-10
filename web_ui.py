@@ -1,5 +1,7 @@
 import logging
 import os
+import json
+from datetime import datetime
 
 from flask import Flask, jsonify, render_template, request, session
 from dotenv import load_dotenv
@@ -8,6 +10,23 @@ from assistant_core import ask_gemini, AssistantError
 from conversation_manager import ConversationManager
 
 load_dotenv()
+
+# #region agent log
+DEBUG_LOG_PATH = r"c:\Users\patri\OneDrive\Documents\GitHub\my_ai_assistant_python\.cursor\debug.log"
+def _debug_log(session_id, run_id, hypothesis_id, location, message, data):
+    try:
+        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "sessionId": session_id,
+                "runId": run_id,
+                "hypothesisId": hypothesis_id,
+                "location": location,
+                "message": message,
+                "data": data,
+                "timestamp": int(datetime.now().timestamp() * 1000)
+            }) + "\n")
+    except: pass
+# #endregion
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-key-change-in-production")
@@ -51,12 +70,18 @@ def index():
 
 @app.route("/ask", methods=["POST"])
 def ask():
+    # #region agent log
+    _debug_log("debug-session", "run1", "A", "web_ui.py:52", "Flask /ask endpoint called", {"method": request.method, "has_json": request.is_json})
+    # #endregion
     data = request.get_json(silent=True) or {}
     prompt = data.get("prompt", "")
     conversation_id = data.get("conversation_id") or session.get("conversation_id")
     temperature = data.get("temperature", 0.7)
     max_tokens = data.get("max_tokens", 2048)
     
+    # #region agent log
+    _debug_log("debug-session", "run1", "A", "web_ui.py:59", "Request parsed", {"prompt_len": len(prompt), "conversation_id": conversation_id, "temperature": temperature, "max_tokens": max_tokens})
+    # #endregion
     logger.info("/ask received prompt length=%d, conversation_id=%s, temperature=%.2f, max_tokens=%d", 
                 len(prompt), conversation_id, temperature, max_tokens)
 
@@ -83,12 +108,18 @@ def ask():
                                for msg in history]
         
         # Get response from Gemini with configurable settings
+        # #region agent log
+        _debug_log("debug-session", "run1", "B", "web_ui.py:85", "Calling ask_gemini", {"prompt_len": len(prompt), "history_count": len(conversation_history)})
+        # #endregion
         answer = ask_gemini(
             prompt, 
             conversation_history=conversation_history,
             temperature=temperature,
             max_output_tokens=max_tokens
         )
+        # #region agent log
+        _debug_log("debug-session", "run1", "B", "web_ui.py:92", "ask_gemini returned", {"answer_len": len(answer) if answer else 0})
+        # #endregion
         
         # Save user message and assistant response
         ConversationManager.add_message(conversation_id, "user", prompt)
@@ -99,9 +130,15 @@ def ask():
             "conversation_id": conversation_id
         }
     except AssistantError as e:
+        # #region agent log
+        _debug_log("debug-session", "run1", "C", "web_ui.py:101", "AssistantError caught", {"error": str(e)})
+        # #endregion
         logger.warning("AssistantError: %s", e)
         return {"error": str(e)}, 400
     except Exception as e:
+        # #region agent log
+        _debug_log("debug-session", "run1", "D", "web_ui.py:105", "Unhandled exception", {"error": str(e), "type": type(e).__name__})
+        # #endregion
         logger.exception("Unhandled exception in /ask: %s", e)
         return {
             "error": "An unexpected error occurred while processing your request."

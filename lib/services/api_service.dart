@@ -1,15 +1,12 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'gemini_service.dart';
 import '../models/conversation.dart';
 
 class ApiService {
-  static const String defaultBaseUrl = 'http://127.0.0.1:5000';
+  final GeminiService _geminiService;
   
-  String get baseUrl {
-    return dotenv.env['API_BASE_URL'] ?? defaultBaseUrl;
-  }
-
+  ApiService({GeminiService? geminiService})
+      : _geminiService = geminiService ?? GeminiService();
+  
   Future<AskResponse> askQuestion({
     required String prompt,
     String? conversationId,
@@ -17,112 +14,83 @@ class ApiService {
     int maxTokens = 2048,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/ask'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'prompt': prompt,
-          'conversation_id': conversationId,
-          'temperature': temperature,
-          'max_tokens': maxTokens,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return AskResponse(
-          response: data['response'] as String,
-          conversationId: data['conversation_id'] as String?,
-        );
-      } else {
-        final errorData = jsonDecode(response.body) as Map<String, dynamic>?;
-        final errorMessage = errorData?['error'] as String? ?? 
-            'HTTP ${response.statusCode}: ${response.reasonPhrase}';
-        throw ApiException(errorMessage);
+      // Convert conversation history if available
+      List<Map<String, String>>? conversationHistory;
+      if (conversationId != null) {
+        // Note: Conversation history will be loaded by ConversationService
+        // and passed separately. For now, we'll handle it in ChatView.
+        conversationHistory = null; // Will be provided by caller
       }
+      
+      final response = await _geminiService.askQuestion(
+        prompt: prompt,
+        conversationHistory: conversationHistory,
+        temperature: temperature,
+        maxOutputTokens: maxTokens,
+      );
+      
+      return AskResponse(
+        response: response,
+        conversationId: conversationId,
+      );
     } catch (e) {
-      if (e is ApiException) rethrow;
+      if (e is GeminiException) {
+        throw ApiException(e.message);
+      }
       throw ApiException('Network error: ${e.toString()}');
     }
   }
-
+  
+  /// Ask question with conversation history
+  Future<AskResponse> askQuestionWithHistory({
+    required String prompt,
+    required List<Map<String, String>> conversationHistory,
+    String? conversationId,
+    double temperature = 0.7,
+    int maxTokens = 2048,
+  }) async {
+    try {
+      final response = await _geminiService.askQuestion(
+        prompt: prompt,
+        conversationHistory: conversationHistory,
+        temperature: temperature,
+        maxOutputTokens: maxTokens,
+      );
+      
+      return AskResponse(
+        response: response,
+        conversationId: conversationId,
+      );
+    } catch (e) {
+      if (e is GeminiException) {
+        throw ApiException(e.message);
+      }
+      throw ApiException('Network error: ${e.toString()}');
+    }
+  }
+  
+  // Legacy methods kept for compatibility but not used
   Future<List<ConversationMetadata>> listConversations() async {
-    try {
-      final response = await http.get(Uri.parse('$baseUrl/conversations'));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final conversations = data['conversations'] as List<dynamic>;
-        return conversations
-            .map((conv) => ConversationMetadata.fromJson(conv as Map<String, dynamic>))
-            .toList();
-      } else {
-        throw ApiException('Failed to load conversations: ${response.statusCode}');
-      }
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('Network error: ${e.toString()}');
-    }
+    throw ApiException('Use ConversationService.listConversations() instead');
   }
-
+  
   Future<Conversation> getConversation(String conversationId) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/conversations/$conversationId'),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return Conversation.fromJson(data);
-      } else if (response.statusCode == 404) {
-        throw ApiException('Conversation not found');
-      } else {
-        throw ApiException('Failed to load conversation: ${response.statusCode}');
-      }
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('Network error: ${e.toString()}');
-    }
+    throw ApiException('Use ConversationService.loadConversation() instead');
   }
-
+  
   Future<String> createConversation() async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/conversations/new'),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return data['conversation_id'] as String;
-      } else {
-        throw ApiException('Failed to create conversation: ${response.statusCode}');
-      }
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('Network error: ${e.toString()}');
-    }
+    throw ApiException('Use ConversationService.createNewConversation() instead');
   }
-
+  
   Future<void> deleteConversation(String conversationId) async {
-    try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/conversations/$conversationId'),
-      );
-
-      if (response.statusCode != 200) {
-        throw ApiException('Failed to delete conversation: ${response.statusCode}');
-      }
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('Network error: ${e.toString()}');
-    }
+    throw ApiException('Use ConversationService.deleteConversation() instead');
   }
 }
 
 class AskResponse {
   final String response;
   final String? conversationId;
-
+  
   AskResponse({
     required this.response,
     this.conversationId,

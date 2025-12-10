@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/conversation_service.dart';
 import '../services/api_service.dart';
 import '../services/settings_service.dart';
+import '../services/local_conversation_storage.dart';
 import '../models/conversation.dart';
 import 'message_bubble.dart';
 import 'typing_indicator.dart';
@@ -53,31 +54,24 @@ class _ChatViewState extends State<ChatView> {
     final conversationService = context.read<ConversationService>();
     final apiService = context.read<ApiService>();
 
-    // Add user message to UI immediately
-    final userMessage = Message(
-      role: 'user',
-      content: prompt,
-      timestamp: DateTime.now(),
-    );
-
     // Update current conversation or create new one
     String? conversationId = conversationService.currentConversationId;
     if (conversationId == null) {
       try {
         conversationId = await conversationService.createNewConversation();
       } catch (e) {
-        _showError('Failed to create conversation: $e');
-        setState(() => _isLoading = false });
+        if (mounted) {
+          _showError('Failed to create conversation: $e');
+        }
+        setState(() => _isLoading = false);
         return;
       }
     }
 
-    // Load conversation to get history
-    Conversation? conversation = conversationService.currentConversation;
-    if (conversation == null && conversationId != null) {
+    // Load conversation to get history if not already loaded
+    if (conversationService.currentConversation == null) {
       try {
         await conversationService.loadConversation(conversationId);
-        conversation = conversationService.currentConversation;
       } catch (e) {
         // Continue anyway
       }
@@ -87,32 +81,30 @@ class _ChatViewState extends State<ChatView> {
     _focusNode.unfocus();
 
     try {
+      // Add user message to conversation
+      await conversationService.addMessage('user', prompt);
+
       // Get conversation history (last 20 messages)
-      final history = conversation?.messages ?? [];
-      final recentHistory = history.length > 20 
-          ? history.sublist(history.length - 20)
-          : history;
-      
-      final conversationHistory = recentHistory
-          .map((msg) => {
-                'role': msg.role,
-                'content': msg.content,
-              })
-          .toList();
+      final allHistory = conversationService.getConversationHistory();
+      final recentHistory = allHistory.length > 20
+          ? allHistory.sublist(allHistory.length - 20)
+          : allHistory;
 
       // Get settings
+      if (!mounted) return;
       final settingsService = context.read<SettingsService>();
-      
-      // Call API
-      final response = await apiService.askQuestion(
+
+      // Call API with conversation history
+      final response = await apiService.askQuestionWithHistory(
         prompt: prompt,
+        conversationHistory: recentHistory,
         conversationId: conversationId,
         temperature: settingsService.temperature,
         maxTokens: settingsService.maxTokens,
       );
 
-      // Reload conversation to get updated messages
-      await conversationService.loadConversation(conversationId);
+      // Add assistant response to conversation
+      await conversationService.addMessage('assistant', response.response);
 
       setState(() {
         _isLoading = false;
@@ -140,37 +132,54 @@ class _ChatViewState extends State<ChatView> {
 
     if (conversationId == null) {
       _showError('No conversation to regenerate');
-      setState(() => _isLoading = false });
+      setState(() => _isLoading = false);
       return;
     }
 
     try {
-      // Remove last assistant message from conversation
+      // Remove last assistant message from conversation if it exists
       final conversation = conversationService.currentConversation;
       if (conversation != null && conversation.messages.isNotEmpty) {
         final lastMessage = conversation.messages.last;
         if (lastMessage.role == 'assistant') {
+          // Remove the last assistant message and save
           final updatedMessages = conversation.messages.sublist(
             0,
             conversation.messages.length - 1,
           );
-          // Note: This is a UI-only operation. The backend will handle the actual regeneration.
+          final updatedConversation = conversation.copyWith(
+            messages: updatedMessages,
+            updatedAt: DateTime.now(),
+          );
+          // Save the updated conversation
+          final storage = LocalConversationStorage();
+          await storage.updateConversation(updatedConversation);
+          // Reload to get updated state
+          await conversationService.loadConversation(conversationId);
         }
       }
 
+      // Get conversation history (last 20 messages, excluding the last assistant message if we removed it)
+      final allHistory = conversationService.getConversationHistory();
+      final recentHistory = allHistory.length > 20
+          ? allHistory.sublist(allHistory.length - 20)
+          : allHistory;
+
       // Get settings
+      if (!mounted) return;
       final settingsService = context.read<SettingsService>();
-      
+
       // Call API with same prompt
-      final response = await apiService.askQuestion(
+      final response = await apiService.askQuestionWithHistory(
         prompt: _lastPrompt!,
+        conversationHistory: recentHistory,
         conversationId: conversationId,
         temperature: settingsService.temperature,
         maxTokens: settingsService.maxTokens,
       );
 
-      // Reload conversation
-      await conversationService.loadConversation(conversationId);
+      // Add new assistant response
+      await conversationService.addMessage('assistant', response.response);
 
       setState(() {
         _isLoading = false;
@@ -206,7 +215,8 @@ class _ChatViewState extends State<ChatView> {
             ? [
                 Message(
                   role: 'assistant',
-                  content: "Hello! I'm here and ready to help. How can I assist you today?",
+                  content:
+                      "Hello! I'm here and ready to help. How can I assist you today?",
                   timestamp: DateTime.now(),
                 )
               ]

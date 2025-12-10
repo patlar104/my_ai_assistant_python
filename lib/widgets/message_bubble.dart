@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../models/conversation.dart';
 
 class MessageBubble extends StatelessWidget {
@@ -116,9 +116,6 @@ class MessageBubble extends StatelessWidget {
         ),
         codeblockPadding: const EdgeInsets.all(8),
       ),
-      builders: {
-        'code': CodeElementBuilder(),
-      },
     );
   }
 
@@ -132,26 +129,3 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
-class CodeElementBuilder extends MarkdownElementBuilder {
-  @override
-  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    final code = element.textContent;
-
-    // Simple code block with dark background
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1e1e1e),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: SelectableText(
-        code,
-        style: const TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 12,
-          color: Colors.white,
-        ),
-      ),
-    );
-  }
-}

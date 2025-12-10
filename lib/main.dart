@@ -11,9 +11,16 @@ void main() async {
   
   // Load environment variables
   try {
-    await dotenv.load(fileName: ".env");
+    await dotenv.load(fileName: '.env');
   } catch (e) {
-    debugPrint("Warning: Could not load .env file: $e");
+    debugPrint('Warning: Could not load .env file: $e');
+  }
+  
+  // Validate API key
+  final apiKey = dotenv.env['GEMINI_API_KEY'];
+  if (apiKey == null || apiKey.isEmpty) {
+    debugPrint('ERROR: GEMINI_API_KEY is not set in .env file');
+    // App will still run but will show errors when trying to use Gemini
   }
   
   runApp(const MyApp());
