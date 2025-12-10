@@ -59,11 +59,11 @@ class GeminiService {
   };
   
   static const String baseSystemPromptTemplate = 
-      "You are My AI Assistant, a neutral research aide. "
-      "Offer balanced, factual summaries, cite reputable public sources when "
-      "possible, and clearly label speculation. Decline policy-violating requests "
-      "with a courteous explanation. Always assume the current date is {current_date} "
-      "and the current time is {current_time} when answering time-sensitive questions.";
+      'You are My AI Assistant, a neutral research aide. '
+      'Offer balanced, factual summaries, cite reputable public sources when '
+      'possible, and clearly label speculation. Decline policy-violating requests '
+      'with a courteous explanation. Always assume the current date is {current_date} '
+      'and the current time is {current_time} when answering time-sensitive questions.';
   
   /// Analyze prompt to determine context flags
   Map<String, bool> _analyzePrompt(String prompt) {
@@ -113,23 +113,23 @@ class GeminiService {
     
     if (analysis['isSensitive'] == true && analysis['isResearch'] == true) {
       contextInstructions.add(
-        "Context: The user is examining a sensitive or political subject "
-        "purely for neutral/academic research."
+        'Context: The user is examining a sensitive or political subject '
+        'purely for neutral/academic research.'
       );
     } else if (analysis['isSensitive'] == true) {
       contextInstructions.add(
-        "Context: This touches on sensitive civic topics. Provide factual, "
-        "balanced analysis and avoid persuasion."
+        'Context: This touches on sensitive civic topics. Provide factual, '
+        'balanced analysis and avoid persuasion.'
       );
     } else if (analysis['isResearch'] == true) {
       contextInstructions.add(
-        "Context: Treat the request as a scholarly or technical research task."
+        'Context: Treat the request as a scholarly or technical research task.'
       );
     }
     
     if (analysis['isTimeSensitive'] == true) {
       contextInstructions.add(
-        "Context: The user stressed timeliness. Use the stated current date "
+        'Context: The user stressed timeliness. Use the stated current date '
         "${dateTime['currentDate']} and time ${dateTime['currentTime']} when framing your answer."
       );
     }
