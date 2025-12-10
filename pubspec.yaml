@@ -1,0 +1,47 @@
+name: my_ai_assistant
+description: A Flutter application for AI assistant powered by Google Gemini
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # HTTP client for API calls
+  http: ^1.1.0
+  
+  # Local storage
+  path_provider: ^2.1.1
+  shared_preferences: ^2.2.2
+  
+  # State management
+  provider: ^6.1.1
+  
+  # Markdown rendering
+  flutter_markdown: ^0.6.18
+  
+  # Code syntax highlighting
+  syntax_highlighter: ^2.0.0
+  
+  # Environment variables
+  flutter_dotenv: ^5.1.0
+  
+  # UUID generation
+  uuid: ^4.2.1
+  
+  # Date formatting
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - .env
