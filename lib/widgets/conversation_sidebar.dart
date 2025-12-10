@@ -41,9 +41,12 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                 ),
                 child: Row(
                   children: [
-                    Text(
-                      'Conversations',
-                      style: Theme.of(context).textTheme.titleLarge,
+                    Expanded(
+                      child: Text(
+                        'Conversations',
+                        style: Theme.of(context).textTheme.titleLarge,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
@@ -58,17 +61,17 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                     onPressed: conversationService.isLoading
                         ? null
                         : () async {
+                            final messenger = ScaffoldMessenger.of(context);
                             try {
                               await conversationService.createNewConversation();
                             } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Error: ${e.toString()}'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text('Error: ${e.toString()}'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
                             }
                           },
                     icon: const Icon(Icons.add),
@@ -86,7 +89,7 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                             child: Text(
                               'No conversations yet',
                               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                                   ),
                             ),
                           )
@@ -98,22 +101,22 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
 
                               return InkWell(
                                 onTap: () async {
+                                  final messenger = ScaffoldMessenger.of(context);
                                   try {
                                     await conversationService.loadConversation(conv.id);
                                   } catch (e) {
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Error: ${e.toString()}'),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    }
+                                    if (!mounted) return;
+                                    messenger.showSnackBar(
+                                      SnackBar(
+                                        content: Text('Error: ${e.toString()}'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
                                   }
                                 },
                                 child: Container(
                                   color: isActive
-                                      ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
+                                      ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3)
                                       : null,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 16,
@@ -144,7 +147,7 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                                                     color: Theme.of(context)
                                                         .colorScheme
                                                         .onSurface
-                                                        .withOpacity(0.6),
+                                                        .withValues(alpha: 0.6),
                                                   ),
                                             ),
                                           ],
@@ -153,6 +156,7 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                                       IconButton(
                                         icon: const Icon(Icons.delete_outline, size: 18),
                                         onPressed: () async {
+                                          final messenger = ScaffoldMessenger.of(context);
                                           final confirmed = await showDialog<bool>(
                                             context: context,
                                             builder: (context) => AlertDialog(
@@ -176,14 +180,13 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                                             try {
                                               await conversationService.deleteConversation(conv.id);
                                             } catch (e) {
-                                              if (mounted) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  SnackBar(
-                                                    content: Text('Error: ${e.toString()}'),
-                                                    backgroundColor: Colors.red,
-                                                  ),
-                                                );
-                                              }
+                                              if (!mounted) return;
+                                              messenger.showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Error: ${e.toString()}'),
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                              );
                                             }
                                           }
                                         },

@@ -97,7 +97,7 @@ class SettingsPanel extends StatelessWidget {
                                   color: Theme.of(context)
                                       .colorScheme
                                       .onSurface
-                                      .withOpacity(0.6),
+                                      .withValues(alpha: 0.6),
                                 ),
                           ),
                         ],
@@ -122,7 +122,7 @@ class SettingsPanel extends StatelessWidget {
                                   color: Theme.of(context)
                                       .colorScheme
                                       .onSurface
-                                      .withOpacity(0.6),
+                                      .withValues(alpha: 0.6),
                                 ),
                           ),
                           Slider(
@@ -150,7 +150,7 @@ class SettingsPanel extends StatelessWidget {
                                   color: Theme.of(context)
                                       .colorScheme
                                       .onSurface
-                                      .withOpacity(0.6),
+                                      .withValues(alpha: 0.6),
                                 ),
                           ),
                           Slider(
@@ -265,7 +265,7 @@ class SettingsPanel extends StatelessWidget {
                                   color: Theme.of(context)
                                       .colorScheme
                                       .onSurface
-                                      .withOpacity(0.6),
+                                      .withValues(alpha: 0.6),
                                 ),
                           ),
                         ],
