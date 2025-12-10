@@ -35,7 +35,18 @@ if not hasattr(logging, '_web_ui_configured'):
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html")
+    """API endpoint - returns JSON indicating this is an API server."""
+    return jsonify({
+        "message": "My AI Assistant API",
+        "version": "1.0.0",
+        "endpoints": {
+            "/ask": "POST - Send a prompt to the AI assistant",
+            "/conversations": "GET - List all conversations",
+            "/conversations/new": "POST - Create a new conversation",
+            "/conversations/<id>": "GET - Get a specific conversation",
+            "/conversations/<id>": "DELETE - Delete a conversation",
+        }
+    })
 
 
 @app.route("/ask", methods=["POST"])
