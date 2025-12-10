@@ -1,0 +1,372 @@
+import logging
+import os
+import json
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types as genai_types
+
+# Load environment variables from .env
+load_dotenv()
+
+# #region agent log
+DEBUG_LOG_PATH = r"c:\Users\patri\OneDrive\Documents\GitHub\my_ai_assistant_python\.cursor\debug.log"
+def _debug_log(session_id, run_id, hypothesis_id, location, message, data):
+    try:
+        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "sessionId": session_id,
+                "runId": run_id,
+                "hypothesisId": hypothesis_id,
+                "location": location,
+                "message": message,
+                "data": data,
+                "timestamp": int(datetime.now().timestamp() * 1000)
+            }) + "\n")
+    except: pass
+# #endregion
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+# Disable propagation to prevent duplicate logs from root logger
+logger.propagate = False
+
+# Use a process-level flag to ensure logging is only configured once per process
+# This prevents duplicate handlers when Flask's reloader re-imports modules
+if not hasattr(logging, '_assistant_core_configured'):
+    # Remove any existing StreamHandler instances to prevent duplicates
+    for handler in list(logger.handlers):
+        if isinstance(handler, logging.StreamHandler):
+            logger.removeHandler(handler)
+    
+    _console = logging.StreamHandler()
+    _console.setFormatter(logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s"
+    ))
+    logger.addHandler(_console)
+    logging._assistant_core_configured = True
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+EXTRA_ASSISTANT_CONTEXT = (os.getenv("ASSISTANT_EXTRA_CONTEXT") or "").strip()
+
+# #region agent log
+_debug_log("debug-session", "run1", "E", "assistant_core.py:36", "Checking GEMINI_API_KEY", {"has_key": bool(GEMINI_API_KEY), "key_length": len(GEMINI_API_KEY) if GEMINI_API_KEY else 0})
+# #endregion
+
+if not GEMINI_API_KEY:
+    logger.error("GEMINI_API_KEY is not set. Check your .env file.")
+    raise RuntimeError("GEMINI_API_KEY environment variable is required.")
+
+# Create a single shared client.
+# #region agent log
+_debug_log("debug-session", "run1", "E", "assistant_core.py:44", "Creating Gemini client", {})
+# #endregion
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+# Choose a default model – adjust if you want Pro instead of Flash.
+DEFAULT_MODEL = "gemini-2.5-flash"
+
+BASE_SYSTEM_PROMPT_TEMPLATE = (
+    "You are My AI Assistant, a neutral research aide. "
+    "Offer balanced, factual summaries, cite reputable public sources when "
+    "possible, and clearly label speculation. Decline policy-violating requests "
+    "with a courteous explanation. Always assume the current date is {current_date} "
+    "and the current time is {current_time} when answering time-sensitive questions."
+)
+
+RESEARCH_KEYWORDS = {
+    "research",
+    "study",
+    "analyze",
+    "analysis",
+    "report",
+    "paper",
+    "whitepaper",
+    "thesis",
+    "investigate",
+    "explain",
+    "context",
+    "academic",
+}
+
+SENSITIVE_KEYWORDS = {
+    "election",
+    "policy",
+    "politic",
+    "government",
+    "law",
+    "current event",
+    "geopolit",
+    "conflict",
+    "war",
+    "protest",
+    "legislation",
+    "campaign",
+}
+
+TIME_SENSITIVE_KEYWORDS = {
+    "today",
+    "tonight",
+    "current",
+    "latest",
+    "recent",
+    "now",
+    "deadline",
+    "forecast",
+    "schedule",
+    "timeline",
+    "this week",
+    "this month",
+    "breaking",
+}
+
+RELAXED_SAFETY_SETTINGS = [
+    genai_types.SafetySetting(
+        category=genai_types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+        threshold=genai_types.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    ),
+]
+
+
+class AssistantError(Exception):
+    """Custom exception for assistant-related errors."""
+    pass
+
+
+def ask_gemini(
+    prompt: str, 
+    conversation_history: Optional[List[Dict]] = None, 
+    *, 
+    model: str = DEFAULT_MODEL,
+    temperature: float = 0.7,
+    max_output_tokens: int = 2048
+) -> str:
+    """
+    Send a prompt to Gemini with optional conversation history and return the response text.
+
+    Args:
+        prompt: The user's prompt/question
+        conversation_history: List of previous messages in format [{"role": "user|assistant", "content": "..."}]
+        model: The Gemini model to use
+        temperature: Controls randomness (0.0-2.0). Lower = more focused, Higher = more creative. Default: 0.7
+        max_output_tokens: Maximum tokens in response (256-8192). Default: 2048
+
+    Raises AssistantError on failure.
+    """
+    logger.info("ask_gemini called with prompt length=%d, history length=%d", 
+                len(prompt), len(conversation_history) if conversation_history else 0)
+
+    if not prompt.strip():
+        raise AssistantError("Prompt is empty. Please enter a question or request.")
+
+    # Build system context
+    is_sensitive, is_research, is_time_sensitive = _analyze_prompt(prompt)
+    current_date, current_time = _current_datetime_strings()
+    
+    system_instruction = BASE_SYSTEM_PROMPT_TEMPLATE.format(
+        current_date=current_date,
+        current_time=current_time,
+    )
+    
+    # Add contextual instructions
+    context_instructions = []
+    if is_sensitive and is_research:
+        context_instructions.append(
+            "Context: The user is examining a sensitive or political subject "
+            "purely for neutral/academic research."
+        )
+    elif is_sensitive:
+        context_instructions.append(
+            "Context: This touches on sensitive civic topics. Provide factual, "
+            "balanced analysis and avoid persuasion."
+        )
+    elif is_research:
+        context_instructions.append(
+            "Context: Treat the request as a scholarly or technical research task."
+        )
+    if is_time_sensitive:
+        context_instructions.append(
+            f"Context: The user stressed timeliness. Use the stated current date "
+            f"{current_date} and time {current_time} when framing your answer."
+        )
+    if EXTRA_ASSISTANT_CONTEXT:
+        context_instructions.append(EXTRA_ASSISTANT_CONTEXT)
+    
+    logger.info(
+        "Prompt context: sensitive=%s research=%s time_sensitive=%s",
+        is_sensitive,
+        is_research,
+        is_time_sensitive,
+    )
+
+    try:
+        # Build contents array for Gemini API
+        contents = []
+        
+        # Add system instruction as first message
+        system_message = system_instruction
+        if context_instructions:
+            system_message += "\n\n" + "\n".join(context_instructions)
+        contents.append(genai_types.Content(
+            role="user",
+            parts=[genai_types.Part(text=system_message)]
+        ))
+        contents.append(genai_types.Content(
+            role="model",
+            parts=[genai_types.Part(text="Understood. I'll follow these guidelines.")]
+        ))
+        
+        # Add conversation history if provided
+        if conversation_history:
+            for msg in conversation_history:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if content:  # Only check for content, accept any valid role
+                    # Map "assistant" to "model" for Gemini API
+                    if role == "assistant":
+                        api_role = "model"
+                    elif role in ("user", "model"):
+                        api_role = role
+                    else:
+                        # Skip invalid roles
+                        continue
+                    contents.append(genai_types.Content(
+                        role=api_role,
+                        parts=[genai_types.Part(text=content)]
+                    ))
+        
+        # Add current user prompt
+        contents.append(genai_types.Content(
+            role="user",
+            parts=[genai_types.Part(text=prompt.strip())]
+        ))
+        
+        # Validate and clamp parameters
+        temperature = max(0.0, min(2.0, float(temperature)))
+        max_output_tokens = max(256, min(8192, int(max_output_tokens)))
+        
+        # #region agent log
+        _debug_log("debug-session", "run1", "B", "assistant_core.py:225", "Calling Gemini API", {"model": model, "contents_count": len(contents), "temperature": temperature, "max_tokens": max_output_tokens})
+        # #endregion
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=genai_types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
+                safety_settings=RELAXED_SAFETY_SETTINGS,
+            ),
+        )
+        # #region agent log
+        _debug_log("debug-session", "run1", "B", "assistant_core.py:234", "Gemini API returned", {"has_response": bool(response), "has_text": bool(getattr(response, "text", None))})
+        # #endregion
+
+        # Robustly extract text: prefer response.text, otherwise fall back to
+        # joining candidate parts (covers some safety-blocked or streaming cases).
+        text = getattr(response, "text", None)
+        if not text:
+            candidates = getattr(response, "candidates", []) or []
+            parts = []
+            for cand in candidates:
+                content = getattr(cand, "content", None)
+                if not content:
+                    continue
+                for part in getattr(content, "parts", []) or []:
+                    if hasattr(part, "text") and part.text:
+                        parts.append(part.text)
+            if parts:
+                text = "\n".join(parts).strip()
+
+        if not text:
+            logger.warning("Gemini returned no text field.")
+            raise AssistantError("The assistant didn't return any text. Try again.")
+
+        logger.info("ask_gemini succeeded")
+        return text
+
+    except AssistantError:
+        raise
+
+    except Exception as e:
+        # #region agent log
+        _debug_log("debug-session", "run1", "F", "assistant_core.py:292", "Gemini API exception", {"error": str(e), "type": type(e).__name__})
+        # #endregion
+        logger.exception("Unexpected error calling Gemini API: %s", e)
+        raise AssistantError(
+            "Something went wrong talking to the AI backend. "
+            "Check logs for details and try again."
+        ) from e
+
+
+def _analyze_prompt(prompt: str) -> Tuple[bool, bool, bool]:
+    """
+    Returns a (is_sensitive, is_research, is_time_sensitive) tuple for heuristics.
+    """
+    lowered = prompt.lower()
+    is_sensitive = any(token in lowered for token in SENSITIVE_KEYWORDS)
+    is_research = any(token in lowered for token in RESEARCH_KEYWORDS)
+    is_time_sensitive = any(token in lowered for token in TIME_SENSITIVE_KEYWORDS)
+    return is_sensitive, is_research, is_time_sensitive
+
+
+def _build_contextual_prompt(prompt: str):
+    """
+    Prepend lightweight context so the model understands user intent.
+    Returns the augmented prompt along with metadata for logging.
+    """
+    is_sensitive, is_research, is_time_sensitive = _analyze_prompt(prompt)
+    current_date, current_time = _current_datetime_strings()
+    context_lines = [
+        BASE_SYSTEM_PROMPT_TEMPLATE.format(
+            current_date=current_date,
+            current_time=current_time,
+        )
+    ]
+
+    if is_sensitive and is_research:
+        context_lines.append(
+            "Context: The user is examining a sensitive or political subject "
+            "purely for neutral/academic research."
+        )
+    elif is_sensitive:
+        context_lines.append(
+            "Context: This touches on sensitive civic topics. Provide factual, "
+            "balanced analysis and avoid persuasion."
+        )
+    elif is_research:
+        context_lines.append(
+            "Context: Treat the request as a scholarly or technical research task."
+        )
+    if is_time_sensitive:
+        context_lines.append(
+            "Context: The user stressed timeliness. Use the stated current date "
+            f"{current_date} and time {current_time} when framing your answer."
+        )
+    if EXTRA_ASSISTANT_CONTEXT:
+        context_lines.append(EXTRA_ASSISTANT_CONTEXT)
+
+    context_lines.append("User prompt:")
+    context_lines.append(prompt.strip())
+    context_lines.append("")
+    context_lines.append("Assistant response:")
+
+    contextual_prompt = "\n".join(context_lines)
+
+    return contextual_prompt, {
+        "is_sensitive": is_sensitive,
+        "is_research": is_research,
+        "is_time_sensitive": is_time_sensitive,
+    }
+
+
+def _current_datetime_strings() -> Tuple[str, str]:
+    """
+    Returns formatted (date, time) strings using the local timezone to provide
+    Gemini with concrete temporal context every call.
+    """
+    now = datetime.now().astimezone()
+    date_str = now.strftime("%B %d, %Y")
+    time_str = now.strftime("%H:%M %Z")
+    return date_str, time_str
