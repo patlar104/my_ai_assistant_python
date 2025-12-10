@@ -95,13 +95,7 @@
         </header>
 
         <section id="chat" class="chat">
-          <div class="msg-row assistant">
-            <div class="bubble">
-              <div class="role-label">Assistant</div>
-              Hello! I'm here and ready to help.  
-              How can I assist you today?
-            </div>
-          </div>
+          <!-- Initial message will be added via JavaScript -->
         </section>
 
         <form id="prompt-form" class="input-area">
@@ -245,7 +239,7 @@
         item.className = `conversation-item ${conv.id === currentConversationId ? 'active' : ''}`;
         item.innerHTML = `
           <div class="conversation-info" data-id="${conv.id}">
-            <div class="conversation-title">${conv.message_count > 0 ? `Conversation (${conv.message_count} messages)` : 'New Conversation'}</div>
+            <div class="conversation-title">${conv.message_count > 0 ? `Conversation (${conv.message_count} ${conv.message_count === 1 ? 'message' : 'messages'})` : 'New Conversation'}</div>
             <div class="conversation-date">${formatDate(conv.updated_at || conv.created_at)}</div>
           </div>
           <button class="delete-conversation-btn" data-id="${conv.id}" aria-label="Delete conversation">×</button>
@@ -295,8 +289,8 @@
         currentConversationId = conversationId;
         sessionStorage.setItem('conversation_id', conversationId);
         
-        // Clear and reload chat
-        clearChat();
+        // Clear and reload chat (don't show welcome message when loading existing conversation)
+        clearChat(false);
         data.messages.forEach(msg => {
           appendMessage(msg.role, msg.content);
         });
@@ -330,16 +324,12 @@
     }
 
     // Clear chat display
-    function clearChat() {
-      chat.innerHTML = `
-        <div class="msg-row assistant">
-          <div class="bubble">
-            <div class="role-label">Assistant</div>
-            Hello! I'm here and ready to help.  
-            How can I assist you today?
-          </div>
-        </div>
-      `;
+    function clearChat(showWelcome = true) {
+      chat.innerHTML = '';
+      // Add initial welcome message using appendMessage for consistent structure
+      if (showWelcome) {
+        appendMessage('assistant', "Hello! I'm here and ready to help. How can I assist you today?");
+      }
     }
 
     // Configure marked for markdown rendering
@@ -722,6 +712,9 @@
       await loadConversations();
       if (currentConversationId) {
         await loadConversation(currentConversationId);
+      } else {
+        // Show initial welcome message if no conversation is loaded
+        clearChat();
       }
     })();
   </script>

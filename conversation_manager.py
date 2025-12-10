@@ -94,11 +94,14 @@ class ConversationManager:
                 with open(file_path, "r", encoding="utf-8") as f:
                     conversation = json.load(f)
                     # Return only metadata, not full messages
+                    # Count only user messages (not assistant responses)
+                    messages = conversation.get("messages", [])
+                    user_message_count = sum(1 for msg in messages if msg.get("role") == "user")
                     conversations.append({
                         "id": conversation["id"],
                         "created_at": conversation.get("created_at"),
                         "updated_at": conversation.get("updated_at"),
-                        "message_count": len(conversation.get("messages", []))
+                        "message_count": user_message_count
                     })
             except Exception as e:
                 logger.warning(f"Failed to read conversation file {file_path}: {e}")
