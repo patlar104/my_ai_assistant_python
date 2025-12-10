@@ -55,6 +55,29 @@ build/
 *.iws
 .idea/
 
+# Flutter generated files
+**/flutter/ephemeral/
+**/flutter/generated_plugin_registrant.*
+**/flutter/generated_plugins.cmake
+**/flutter/generated_config.cmake
+**/flutter/CMakeLists.txt
+*.dll
+*.dll.exp
+*.dll.lib
+*.dll.pdb
+icudtl.dat
+
+# Flutter platform-specific generated files
+windows/flutter/ephemeral/
+windows/flutter/CMakeLists.txt
+linux/flutter/ephemeral/
+macos/Flutter/ephemeral/
+android/.gradle/
+android/app/build/
+android/build/
+android/.idea/
+android/local.properties
+
 # Android
 *.apk
 *.ap_
@@ -112,12 +135,14 @@ local.properties
 *.so
 *.out
 
-# Conversations
+# Conversations (local storage - Flutter app stores in app documents directory)
 conversations/
-*.json
+# Note: Flutter app stores conversations in platform-specific app documents directory
+# which is not in the repo, so no need to ignore app-specific paths
 
 # Logs
 *.log
+.cursor/debug.log
 
 # Coverage
 .coverage
