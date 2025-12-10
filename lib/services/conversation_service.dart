@@ -1,10 +1,11 @@
 import 'package:flutter/foundation.dart';
 import '../models/conversation.dart';
 import 'local_conversation_storage.dart';
+import 'exceptions.dart';
 
 class ConversationService extends ChangeNotifier {
   final LocalConversationStorage _storage;
-  
+
   List<ConversationMetadata> _conversations = [];
   Conversation? _currentConversation;
   String? _currentConversationId;
@@ -13,7 +14,7 @@ class ConversationService extends ChangeNotifier {
 
   ConversationService({
     LocalConversationStorage? storage,
-  })  : _storage = storage ?? LocalConversationStorage();
+  }) : _storage = storage ?? LocalConversationStorage();
 
   List<ConversationMetadata> get conversations => _conversations;
   Conversation? get currentConversation => _currentConversation;
@@ -60,7 +61,7 @@ class ConversationService extends ChangeNotifier {
     try {
       final conversation = await _storage.loadConversation(conversationId);
       if (conversation == null) {
-        throw Exception('Conversation not found');
+        throw ConversationNotFoundException(conversationId);
       }
       _currentConversation = conversation;
       _currentConversationId = conversationId;
@@ -80,14 +81,14 @@ class ConversationService extends ChangeNotifier {
     try {
       final success = await _storage.deleteConversation(conversationId);
       if (!success) {
-        throw Exception('Conversation not found');
+        throw ConversationNotFoundException(conversationId);
       }
-      
+
       if (_currentConversationId == conversationId) {
         _currentConversationId = null;
         _currentConversation = null;
       }
-      
+
       await loadConversations();
       notifyListeners();
     } catch (e) {
@@ -118,20 +119,20 @@ class ConversationService extends ChangeNotifier {
       _setLoading(false);
     }
   }
-  
+
   /// Add a message to the current conversation
   Future<void> addMessage(String role, String content) async {
     if (_currentConversationId == null) {
-      throw Exception('No active conversation');
+      throw ConversationStorageException('No active conversation');
     }
-    
+
     try {
       final updated = await _storage.addMessage(
         _currentConversationId!,
         role,
         content,
       );
-      
+
       if (updated != null) {
         _currentConversation = updated;
         await loadConversations(); // Update metadata
@@ -143,13 +144,13 @@ class ConversationService extends ChangeNotifier {
       rethrow;
     }
   }
-  
+
   /// Get conversation history in format for Gemini API
   List<Map<String, String>> getConversationHistory() {
     if (_currentConversation == null) {
       return [];
     }
-    
+
     return _currentConversation!.messages
         .map((msg) => {
               'role': msg.role,

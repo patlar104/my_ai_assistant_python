@@ -47,4 +47,52 @@ void main() {
     expect(find.text('Conversations'), findsOneWidget);
     expect(find.text('New Conversation'), findsOneWidget);
   });
+
+  testWidgets('New Conversation button is tappable',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const MyApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Find and tap the New Conversation button
+    final newConversationButton = find.text('New Conversation');
+    expect(newConversationButton, findsOneWidget);
+
+    await tester.tap(newConversationButton);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // After tapping, the button should still be present
+    // (conversation creation is async, so we just verify UI doesn't break)
+    expect(find.text('New Conversation'), findsOneWidget);
+  });
+
+  testWidgets('Settings button is present', (WidgetTester tester) async {
+    await tester.pumpWidget(const MyApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Find the settings floating action button
+    final settingsButton = find.byIcon(Icons.settings);
+    expect(settingsButton, findsOneWidget);
+  });
+
+  testWidgets('App handles missing API key gracefully',
+      (WidgetTester tester) async {
+    // Temporarily remove API key
+    final originalKey = dotenv.env['GEMINI_API_KEY'];
+    dotenv.env['GEMINI_API_KEY'] = '';
+
+    await tester.pumpWidget(const MyApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // App should still load (error will show when trying to use API)
+    expect(find.text('Conversations'), findsOneWidget);
+
+    // Restore original key
+    if (originalKey != null) {
+      dotenv.env['GEMINI_API_KEY'] = originalKey;
+    }
+  });
 }

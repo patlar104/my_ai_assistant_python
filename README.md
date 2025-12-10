@@ -103,14 +103,43 @@ Simply run the Flutter app on your desired platform (see above). The app connect
 
 ## Testing
 
-### Flutter Tests
+### Running Tests
+
 ```bash
+# Run all tests (unit, integration, and widget tests)
 flutter test
+
+# Run only unit tests
+flutter test test/services/
+
+# Run only integration tests (requires real API key)
+flutter test test/integration/
+
+# Run only widget tests
+flutter test test/widget_test.dart
 ```
+
+### Test Coverage
+
+The project includes comprehensive test coverage:
+
+- **Unit Tests** (`test/services/`):
+  - `gemini_service_test.dart` - Tests for Gemini API integration (7 test cases)
+  - `local_conversation_storage_test.dart` - Tests for conversation storage (8 test cases)
+
+- **Integration Tests** (`test/integration/`):
+  - `gemini_integration_test.dart` - End-to-end tests with real API (optional, requires API key)
+
+- **Widget Tests** (`test/`):
+  - `widget_test.dart` - UI component tests
+
+## Legacy Backend
+
+The original Flask backend has been archived to the `legacy/` directory. These files are preserved for reference but are **no longer used** by the Flutter application. See `legacy/README.md` for more information.
 
 ## Notes
 
 - The app connects directly to Google's Gemini API - no backend server required
-- Conversations are stored locally on the device
-- The Python backend files (`web_ui.py`, `assistant_core.py`, etc.) are no longer used but remain in the repository for reference
+- Conversations are stored locally on the device using platform-specific storage
+- All Python backend functionality has been migrated to Flutter/Dart
 - Make sure your `.env` file contains a valid `GEMINI_API_KEY` from [Google AI Studio](https://makersuite.google.com/app/apikey)
