@@ -31,12 +31,13 @@ void main() {
 
     // Verify that the Conversations sidebar is present
     expect(find.text('Conversations'), findsOneWidget);
-    
+
     // Verify that the New Conversation button is present
     expect(find.text('New Conversation'), findsOneWidget);
   });
 
-  testWidgets('ConversationSidebar displays correctly', (WidgetTester tester) async {
+  testWidgets('ConversationSidebar displays correctly',
+      (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp());
     // Pump a few frames to allow async initialization
     await tester.pump();
