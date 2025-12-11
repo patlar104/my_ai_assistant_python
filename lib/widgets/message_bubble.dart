@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../models/conversation.dart';
+import '../utils/debug_logger.dart';
 
 class MessageBubble extends StatelessWidget {
   final Message message;
@@ -15,9 +17,19 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // #region agent log
+    try {
+      final logFile = File(
+          r'c:\Users\patri\OneDrive\Documents\GitHub\my_ai_assistant_python\.cursor\debug.log');
+      final logEntry =
+          '{"sessionId":"debug-session","runId":"run1","hypothesisId":"H","location":"message_bubble.dart:18","message":"MessageBubble build","data":{"role":"${message.role}","contentLength":${message.content.length},"isUser":${message.role == "user"}},"timestamp":${DateTime.now().millisecondsSinceEpoch}}\n';
+      logFile.writeAsStringSync(logEntry, mode: FileMode.append);
+    } catch (_) {}
+    // #endregion
+
     final isUser = message.role == 'user';
     final theme = Theme.of(context);
-    
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -44,6 +56,7 @@ class MessageBubble extends StatelessWidget {
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -60,14 +73,38 @@ class MessageBubble extends StatelessWidget {
                           children: [
                             IconButton(
                               icon: const Icon(Icons.copy, size: 16),
-                              onPressed: () => _copyToClipboard(context),
+                              onPressed: () {
+                                // #region agent log
+                                DebugLogger.logUserInteraction(
+                                  location: 'message_bubble.dart:73',
+                                  action: 'copy_button_clicked',
+                                  data: {
+                                    'messageLength': message.content.length,
+                                    'role': message.role,
+                                  },
+                                );
+                                // #endregion
+                                _copyToClipboard(context);
+                              },
                               tooltip: 'Copy',
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                             ),
                             IconButton(
                               icon: const Icon(Icons.refresh, size: 16),
-                              onPressed: onRegenerate,
+                              onPressed: () {
+                                // #region agent log
+                                DebugLogger.logUserInteraction(
+                                  location: 'message_bubble.dart:80',
+                                  action: 'regenerate_button_clicked',
+                                  data: {
+                                    'messageLength': message.content.length,
+                                    'role': message.role,
+                                  },
+                                );
+                                // #endregion
+                                onRegenerate?.call();
+                              },
                               tooltip: 'Regenerate',
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
@@ -102,13 +139,30 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildMarkdownContent(BuildContext context, String content) {
+    // #region agent log
+    try {
+      final logFile = File(
+          r'c:\Users\patri\OneDrive\Documents\GitHub\my_ai_assistant_python\.cursor\debug.log');
+      final hasCodeBlock = content.contains('```');
+      final codeBlockCount = '```'.allMatches(content).length ~/ 2;
+      final preview = content.length > 500
+          ? '${content.substring(0, 250)}...${content.substring(content.length - 250)}'
+          : content;
+      final logEntry =
+          '{"sessionId":"debug-session","runId":"run1","hypothesisId":"H","location":"message_bubble.dart:115","message":"Building markdown content","data":{"contentLength":${content.length},"hasCodeBlock":$hasCodeBlock,"codeBlockCount":$codeBlockCount,"preview":"${preview.replaceAll('"', '\\"').replaceAll('\n', '\\n').substring(0, preview.length > 500 ? 500 : preview.length)}"},"timestamp":${DateTime.now().millisecondsSinceEpoch}}\n';
+      logFile.writeAsStringSync(logEntry, mode: FileMode.append);
+    } catch (_) {}
+    // #endregion
+
     return MarkdownBody(
       data: content,
+      shrinkWrap: true,
       styleSheet: MarkdownStyleSheet(
         p: Theme.of(context).textTheme.bodyMedium,
         code: Theme.of(context).textTheme.bodyMedium?.copyWith(
               fontFamily: 'monospace',
-              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+              backgroundColor:
+                  Theme.of(context).colorScheme.surfaceContainerHigh,
             ),
         codeblockDecoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHigh,
@@ -120,12 +174,30 @@ class MessageBubble extends StatelessWidget {
   }
 
   void _copyToClipboard(BuildContext context) async {
-    await Clipboard.setData(ClipboardData(text: message.content));
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Copied to clipboard!')),
+    try {
+      await Clipboard.setData(ClipboardData(text: message.content));
+
+      // #region agent log
+      DebugLogger.logUserInteraction(
+        location: 'message_bubble.dart:122',
+        action: 'copy_to_clipboard_success',
+        data: {'messageLength': message.content.length},
       );
+      // #endregion
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Copied to clipboard!')),
+        );
+      }
+    } catch (e) {
+      // #region agent log
+      DebugLogger.logError(
+        location: 'message_bubble.dart:122',
+        error: 'Failed to copy to clipboard',
+        originalError: e,
+      );
+      // #endregion
     }
   }
 }
-

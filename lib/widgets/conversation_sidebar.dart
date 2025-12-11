@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../services/conversation_service.dart';
+import '../utils/debug_logger.dart';
 
 class ConversationSidebar extends StatefulWidget {
   const ConversationSidebar({super.key});
@@ -61,10 +62,39 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                     onPressed: conversationService.isLoading
                         ? null
                         : () async {
+                            // #region agent log
+                            DebugLogger.logUserInteraction(
+                              location: 'conversation_sidebar.dart:60',
+                              action: 'new_conversation_button_clicked',
+                              data: {
+                                'isLoading': conversationService.isLoading
+                              },
+                            );
+                            // #endregion
+
                             final messenger = ScaffoldMessenger.of(context);
                             try {
                               await conversationService.createNewConversation();
+
+                              // #region agent log
+                              DebugLogger.logUserInteraction(
+                                location: 'conversation_sidebar.dart:66',
+                                action: 'new_conversation_created',
+                                data: {
+                                  'conversationId':
+                                      conversationService.currentConversationId,
+                                },
+                              );
+                              // #endregion
                             } catch (e) {
+                              // #region agent log
+                              DebugLogger.logError(
+                                location: 'conversation_sidebar.dart:68',
+                                error: 'Failed to create new conversation',
+                                originalError: e,
+                              );
+                              // #endregion
+
                               if (!mounted) return;
                               messenger.showSnackBar(
                                 SnackBar(
@@ -88,23 +118,61 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                         ? Center(
                             child: Text(
                               'No conversations yet',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.6),
                                   ),
                             ),
                           )
                         : ListView.builder(
                             itemCount: conversationService.conversations.length,
                             itemBuilder: (context, index) {
-                              final conv = conversationService.conversations[index];
-                              final isActive = conv.id == conversationService.currentConversationId;
+                              final conv =
+                                  conversationService.conversations[index];
+                              final isActive = conv.id ==
+                                  conversationService.currentConversationId;
 
                               return InkWell(
                                 onTap: () async {
-                                  final messenger = ScaffoldMessenger.of(context);
+                                  // #region agent log
+                                  DebugLogger.logUserInteraction(
+                                    location: 'conversation_sidebar.dart:102',
+                                    action: 'conversation_tapped',
+                                    data: {
+                                      'conversationId': conv.id,
+                                      'messageCount': conv.messageCount,
+                                    },
+                                  );
+                                  // #endregion
+
+                                  final messenger =
+                                      ScaffoldMessenger.of(context);
                                   try {
-                                    await conversationService.loadConversation(conv.id);
+                                    await conversationService
+                                        .loadConversation(conv.id);
+
+                                    // #region agent log
+                                    DebugLogger.logUserInteraction(
+                                      location: 'conversation_sidebar.dart:106',
+                                      action: 'conversation_loaded',
+                                      data: {'conversationId': conv.id},
+                                    );
+                                    // #endregion
                                   } catch (e) {
+                                    // #region agent log
+                                    DebugLogger.logError(
+                                      location: 'conversation_sidebar.dart:108',
+                                      error: 'Failed to load conversation',
+                                      originalError: e,
+                                      context: {'conversationId': conv.id},
+                                    );
+                                    // #endregion
+
                                     if (!mounted) return;
                                     messenger.showSnackBar(
                                       SnackBar(
@@ -116,7 +184,10 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                                 },
                                 child: Container(
                                   color: isActive
-                                      ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3)
+                                      ? Theme.of(context)
+                                          .colorScheme
+                                          .primaryContainer
+                                          .withValues(alpha: 0.3)
                                       : null,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 16,
@@ -126,13 +197,17 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                                     children: [
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
                                               conv.messageCount > 0
                                                   ? 'Conversation (${conv.messageCount} ${conv.messageCount == 1 ? 'message' : 'messages'})'
                                                   : 'New Conversation',
-                                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium
+                                                  ?.copyWith(
                                                     fontWeight: isActive
                                                         ? FontWeight.bold
                                                         : FontWeight.normal,
@@ -143,7 +218,10 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                                             const SizedBox(height: 4),
                                             Text(
                                               _formatDate(conv.updatedAt),
-                                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.copyWith(
                                                     color: Theme.of(context)
                                                         .colorScheme
                                                         .onSurface
@@ -154,36 +232,114 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                                         ),
                                       ),
                                       IconButton(
-                                        icon: const Icon(Icons.delete_outline, size: 18),
+                                        icon: const Icon(Icons.delete_outline,
+                                            size: 18),
                                         onPressed: () async {
-                                          final messenger = ScaffoldMessenger.of(context);
-                                          final confirmed = await showDialog<bool>(
+                                          // #region agent log
+                                          DebugLogger.logUserInteraction(
+                                            location:
+                                                'conversation_sidebar.dart:156',
+                                            action:
+                                                'delete_conversation_button_clicked',
+                                            data: {'conversationId': conv.id},
+                                          );
+                                          // #endregion
+
+                                          final messenger =
+                                              ScaffoldMessenger.of(context);
+                                          final confirmed =
+                                              await showDialog<bool>(
                                             context: context,
                                             builder: (context) => AlertDialog(
-                                              title: const Text('Delete Conversation'),
+                                              title: const Text(
+                                                  'Delete Conversation'),
                                               content: const Text(
                                                   'Are you sure you want to delete this conversation?'),
                                               actions: [
                                                 TextButton(
-                                                  onPressed: () => Navigator.pop(context, false),
+                                                  onPressed: () {
+                                                    // #region agent log
+                                                    DebugLogger.logDialog(
+                                                      location:
+                                                          'conversation_sidebar.dart:168',
+                                                      action:
+                                                          'delete_dialog_cancelled',
+                                                      dialogType:
+                                                          'delete_conversation',
+                                                      result: false,
+                                                    );
+                                                    // #endregion
+                                                    Navigator.pop(
+                                                        context, false);
+                                                  },
                                                   child: const Text('Cancel'),
                                                 ),
                                                 TextButton(
-                                                  onPressed: () => Navigator.pop(context, true),
+                                                  onPressed: () {
+                                                    // #region agent log
+                                                    DebugLogger.logDialog(
+                                                      location:
+                                                          'conversation_sidebar.dart:172',
+                                                      action:
+                                                          'delete_dialog_confirmed',
+                                                      dialogType:
+                                                          'delete_conversation',
+                                                      result: true,
+                                                    );
+                                                    // #endregion
+                                                    Navigator.pop(
+                                                        context, true);
+                                                  },
                                                   child: const Text('Delete'),
                                                 ),
                                               ],
                                             ),
                                           );
 
+                                          // #region agent log
+                                          DebugLogger.logDialog(
+                                            location:
+                                                'conversation_sidebar.dart:177',
+                                            action: 'delete_dialog_closed',
+                                            dialogType: 'delete_conversation',
+                                            result: confirmed,
+                                          );
+                                          // #endregion
+
                                           if (confirmed == true) {
                                             try {
-                                              await conversationService.deleteConversation(conv.id);
+                                              await conversationService
+                                                  .deleteConversation(conv.id);
+
+                                              // #region agent log
+                                              DebugLogger.logUserInteraction(
+                                                location:
+                                                    'conversation_sidebar.dart:181',
+                                                action: 'conversation_deleted',
+                                                data: {
+                                                  'conversationId': conv.id
+                                                },
+                                              );
+                                              // #endregion
                                             } catch (e) {
+                                              // #region agent log
+                                              DebugLogger.logError(
+                                                location:
+                                                    'conversation_sidebar.dart:183',
+                                                error:
+                                                    'Failed to delete conversation',
+                                                originalError: e,
+                                                context: {
+                                                  'conversationId': conv.id
+                                                },
+                                              );
+                                              // #endregion
+
                                               if (!mounted) return;
                                               messenger.showSnackBar(
                                                 SnackBar(
-                                                  content: Text('Error: ${e.toString()}'),
+                                                  content: Text(
+                                                      'Error: ${e.toString()}'),
                                                   backgroundColor: Colors.red,
                                                 ),
                                               );

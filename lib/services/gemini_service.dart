@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/foundation.dart';
 import 'exceptions.dart';
+import '../utils/debug_logger.dart';
 
 class GeminiService {
   static const String defaultModel = 'gemini-2.5-flash';
@@ -175,6 +177,22 @@ class GeminiService {
 
     // Add conversation history if provided
     if (conversationHistory != null) {
+      // #region agent log
+      DebugLogger.logDataFlow(
+        location: 'gemini_service.dart:177',
+        operation: 'building_conversation_history_for_api',
+        data: {
+          'historyLength': conversationHistory.length,
+          'historyRoles': conversationHistory.map((m) => m['role']).toList(),
+          'historyContentLengths': conversationHistory
+              .map((m) => (m['content']?.length ?? 0))
+              .toList(),
+          'totalHistoryChars': conversationHistory.fold<int>(
+              0, (sum, m) => sum + (m['content']?.length ?? 0)),
+        },
+      );
+      // #endregion
+
       for (final msg in conversationHistory) {
         final role = msg['role'] ?? 'user';
         final content = msg['content'] ?? '';
@@ -207,6 +225,25 @@ class GeminiService {
         {'text': prompt.trim()}
       ]
     });
+
+    // #region agent log
+    DebugLogger.logDataFlow(
+      location: 'gemini_service.dart:210',
+      operation: 'final_contents_array_built',
+      data: {
+        'totalContents': contents.length,
+        'systemInstructionIncluded': true,
+        'promptLength': prompt.trim().length,
+        'totalCharsInContents': contents.fold<int>(0, (sum, c) {
+          final parts = c['parts'] as List?;
+          if (parts == null) return sum;
+          return sum +
+              parts.fold<int>(
+                  0, (pSum, p) => pSum + ((p['text'] as String?)?.length ?? 0));
+        }),
+      },
+    );
+    // #endregion
 
     // Validate and clamp parameters
     final clampedTemperature = temperature.clamp(0.0, 2.0);
@@ -360,6 +397,19 @@ class GeminiService {
           'The assistant didn\'t return any text. Try again or rephrase your question.',
         );
       }
+
+      // #region agent log
+      try {
+        final logFile = File(
+            r'c:\Users\patri\OneDrive\Documents\GitHub\my_ai_assistant_python\.cursor\debug.log');
+        final preview = text.length > 200
+            ? '${text.substring(0, 100)}...${text.substring(text.length - 100)}'
+            : text;
+        final logEntry =
+            '{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gemini_service.dart:369","message":"Response received from Gemini","data":{"length":${text.length},"preview":"${preview.replaceAll('"', '\\"').replaceAll('\n', '\\n')}"},"timestamp":${DateTime.now().millisecondsSinceEpoch}}\n';
+        logFile.writeAsStringSync(logEntry, mode: FileMode.append);
+      } catch (_) {}
+      // #endregion
 
       if (kDebugMode) {
         debugPrint(

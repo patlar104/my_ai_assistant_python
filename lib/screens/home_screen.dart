@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/conversation_service.dart';
+import '../utils/debug_logger.dart';
 import '../widgets/chat_view.dart';
 import '../widgets/conversation_sidebar.dart';
 import '../widgets/settings_panel.dart';
@@ -25,9 +26,26 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _toggleSettings() {
+    // #region agent log
+    DebugLogger.logUserInteraction(
+      location: 'home_screen.dart:27',
+      action: 'settings_toggle',
+      data: {'currentState': _showSettings, 'newState': !_showSettings},
+    );
+    // #endregion
+
     setState(() {
       _showSettings = !_showSettings;
     });
+
+    // #region agent log
+    DebugLogger.logStateChange(
+      location: 'home_screen.dart:29',
+      stateName: 'showSettings',
+      oldValue: !_showSettings,
+      newValue: _showSettings,
+    );
+    // #endregion
   }
 
   @override
@@ -38,17 +56,25 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           // Sidebar
           const ConversationSidebar(),
-          
+
           // Main content
           Expanded(
             child: Stack(
               children: [
                 const ChatView(),
-                
+
                 // Settings panel overlay
                 if (_showSettings)
                   SettingsPanel(
-                    onClose: () => setState(() => _showSettings = false),
+                    onClose: () {
+                      // #region agent log
+                      DebugLogger.logUserInteraction(
+                        location: 'home_screen.dart:51',
+                        action: 'settings_panel_closed',
+                      );
+                      // #endregion
+                      setState(() => _showSettings = false);
+                    },
                   ),
               ],
             ),
