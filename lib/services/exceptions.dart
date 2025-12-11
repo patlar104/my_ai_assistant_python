@@ -15,11 +15,11 @@ class GeminiApiException extends GeminiException {
   final int statusCode;
 
   GeminiApiException(
-    String message,
+    super.message,
     this.statusCode, {
-    String? code,
-    dynamic originalError,
-  }) : super(message, code: code, originalError: originalError);
+    super.code,
+    super.originalError,
+  });
 
   @override
   String toString() {
@@ -32,13 +32,12 @@ class GeminiApiException extends GeminiException {
 
 /// Exception for network/timeout errors
 class GeminiNetworkException extends GeminiException {
-  GeminiNetworkException(String message, {dynamic originalError})
-      : super(message, originalError: originalError);
+  GeminiNetworkException(super.message, {super.originalError});
 }
 
 /// Exception when no text is returned from the API
 class GeminiEmptyResponseException extends GeminiException {
-  GeminiEmptyResponseException(String message) : super(message);
+  GeminiEmptyResponseException(super.message);
 }
 
 /// Base exception for conversation storage errors
@@ -74,14 +73,10 @@ class ConversationNotFoundException extends ConversationStorageException {
 /// Exception for file permission errors
 class ConversationPermissionException extends ConversationStorageException {
   ConversationPermissionException(
-    String message, {
-    String? conversationId,
-    dynamic originalError,
-  }) : super(
-          message,
-          conversationId: conversationId,
-          originalError: originalError,
-        );
+    super.message, {
+    super.conversationId,
+    super.originalError,
+  });
 }
 
 /// Exception for corrupted or invalid JSON files
